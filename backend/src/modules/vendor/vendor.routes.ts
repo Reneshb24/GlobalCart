@@ -22,7 +22,15 @@ const productCreateSchema = z.object({
   currency: z.string().trim().length(3).transform(v => v.toUpperCase()).default("USD"),
   categoryId: z.string().uuid(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).default("DRAFT"),
-  imageUrl: z.string().url().max(2000).nullable().optional()
+  imageUrl: z.string().url().max(2000).or(z.literal("")).nullable().optional(),
+  images: z.array(z.object({
+    url: z.string().url().max(2000),
+    altText: z.string().max(200).optional(),
+    position: z.number().int().min(0).max(10).optional()
+  })).optional(),
+  imageUrls: z.array(z.string().url().max(2000).or(z.literal(""))).optional(),
+  initialQuantity: z.number().int().min(0).max(1000000).optional(),
+  warehouseId: z.string().uuid().nullable().optional()
 });
 
 const productUpdateSchema = z.object({
@@ -32,7 +40,13 @@ const productUpdateSchema = z.object({
   price: z.number().finite().min(0).max(9999999999).optional(),
   categoryId: z.string().uuid().optional(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
-  imageUrl: z.string().url().max(2000).nullable().optional()
+  imageUrl: z.string().url().max(2000).or(z.literal("")).nullable().optional(),
+  images: z.array(z.object({
+    url: z.string().url().max(2000),
+    altText: z.string().max(200).optional(),
+    position: z.number().int().min(0).max(10).optional()
+  })).optional(),
+  imageUrls: z.array(z.string().url().max(2000).or(z.literal(""))).optional()
 }).refine(val => Object.keys(val).length > 0, {
   message: "Provide at least one field to update"
 });
@@ -214,6 +228,36 @@ vendorRouter.post("/products", async (req, res) => {
       return;
     }
 
+    // Collect all 4 angle images
+    const imageList: { url: string; altText: string; position: number }[] = [];
+    if (input.images && input.images.length > 0) {
+      input.images.forEach((img, idx) => {
+        if (img.url && img.url.trim()) {
+          imageList.push({
+            url: img.url.trim(),
+            altText: img.altText || `${input.name} view ${idx + 1}`,
+            position: img.position !== undefined ? img.position : idx
+          });
+        }
+      });
+    } else if (input.imageUrls && input.imageUrls.length > 0) {
+      input.imageUrls.forEach((url, idx) => {
+        if (url && url.trim()) {
+          imageList.push({
+            url: url.trim(),
+            altText: `${input.name} view ${idx + 1}`,
+            position: idx
+          });
+        }
+      });
+    } else if (input.imageUrl && input.imageUrl.trim()) {
+      imageList.push({
+        url: input.imageUrl.trim(),
+        altText: input.name,
+        position: 0
+      });
+    }
+
     const product = await prisma.product.create({
       data: {
         sku: input.sku,
@@ -226,13 +270,9 @@ vendorRouter.post("/products", async (req, res) => {
         status: input.status,
         categoryId: input.categoryId,
         vendorId: vendor.id,
-        ...(input.imageUrl ? {
+        ...(imageList.length > 0 ? {
           images: {
-            create: [{
-              url: input.imageUrl,
-              altText: input.name,
-              position: 0
-            }]
+            create: imageList
           }
         } : {})
       },
@@ -244,6 +284,32 @@ vendorRouter.post("/products", async (req, res) => {
         }
       }
     });
+
+    // If initialQuantity is provided with warehouseId, stock at that warehouse
+    if (input.initialQuantity !== undefined && input.initialQuantity > 0 && input.warehouseId) {
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id: input.warehouseId }
+      });
+      if (warehouse && warehouse.isActive) {
+        await prisma.inventory.upsert({
+          where: {
+            productId_warehouseId: {
+              productId: product.id,
+              warehouseId: input.warehouseId
+            }
+          },
+          update: {
+            quantity: input.initialQuantity
+          },
+          create: {
+            productId: product.id,
+            warehouseId: input.warehouseId,
+            quantity: input.initialQuantity,
+            reserved: 0
+          }
+        });
+      }
+    }
 
     res.status(201).json({
       product: {
@@ -298,25 +364,48 @@ vendorRouter.patch("/products/:productId", async (req, res) => {
       }
     }
 
-    if (input.imageUrl !== undefined && input.imageUrl !== null) {
-      const existingImg = await prisma.productImage.findFirst({
-        where: { productId, position: 0 }
+    // Collect all 4 angle images to update if provided
+    const updateImages: { url: string; altText: string; position: number }[] = [];
+    if (input.images && input.images.length > 0) {
+      input.images.forEach((img, idx) => {
+        if (img.url && img.url.trim()) {
+          updateImages.push({
+            url: img.url.trim(),
+            altText: img.altText || `${input.name || existing.name} view ${idx + 1}`,
+            position: img.position !== undefined ? img.position : idx
+          });
+        }
       });
-      if (existingImg) {
-        await prisma.productImage.update({
-          where: { id: existingImg.id },
-          data: { url: input.imageUrl, altText: input.name || undefined }
-        });
-      } else {
-        await prisma.productImage.create({
-          data: {
-            productId,
-            url: input.imageUrl,
-            altText: input.name || "Product image",
-            position: 0
-          }
-        });
-      }
+    } else if (input.imageUrls && input.imageUrls.length > 0) {
+      input.imageUrls.forEach((url, idx) => {
+        if (url && url.trim()) {
+          updateImages.push({
+            url: url.trim(),
+            altText: `${input.name || existing.name} view ${idx + 1}`,
+            position: idx
+          });
+        }
+      });
+    } else if (input.imageUrl !== undefined && input.imageUrl !== null && input.imageUrl.trim()) {
+      updateImages.push({
+        url: input.imageUrl.trim(),
+        altText: input.name || existing.name,
+        position: 0
+      });
+    }
+
+    if (updateImages.length > 0) {
+      await prisma.productImage.deleteMany({
+        where: { productId }
+      });
+      await prisma.productImage.createMany({
+        data: updateImages.map(img => ({
+          productId,
+          url: img.url,
+          altText: img.altText,
+          position: img.position
+        }))
+      });
     }
 
     const updated = await prisma.product.update({
@@ -458,7 +547,7 @@ vendorRouter.get("/orders", async (req, res) => {
   }
 });
 
-// -------------------- CATEGORIES (READ ONLY) --------------------
+// -------------------- CATEGORIES & WAREHOUSES (READ ONLY) --------------------
 
 vendorRouter.get("/categories", async (_req, res) => {
   try {
@@ -468,6 +557,27 @@ vendorRouter.get("/categories", async (_req, res) => {
       orderBy: { name: "asc" }
     });
     res.json({ categories });
+  } catch (error) {
+    handleWriteError(res, error);
+  }
+});
+
+vendorRouter.get("/warehouses", async (_req, res) => {
+  try {
+    const warehouses = await prisma.warehouse.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        city: true,
+        region: true,
+        countryCode: true,
+        isActive: true
+      },
+      orderBy: [{ countryCode: "asc" }, { city: "asc" }, { name: "asc" }]
+    });
+    res.json({ warehouses });
   } catch (error) {
     handleWriteError(res, error);
   }

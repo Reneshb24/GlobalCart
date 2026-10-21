@@ -174,26 +174,7 @@ export function getProductGallery(product?: {
     ];
   }
 
-  // 1. Check if SKU has curated gallery
-  const sku = product.sku?.toUpperCase();
-  if (sku && CATALOG_GALLERIES[sku]) {
-    return CATALOG_GALLERIES[sku];
-  }
-
-  // 2. Check if slug maps to curated gallery
-  const slug = product.slug?.toLowerCase();
-  if (slug && SLUG_MAP[slug] && CATALOG_GALLERIES[SLUG_MAP[slug]]) {
-    return CATALOG_GALLERIES[SLUG_MAP[slug]];
-  }
-
-  // 3. Check by name pattern
-  const lowerName = (product.name || "").toLowerCase();
-  if (lowerName.includes("phone")) return CATALOG_GALLERIES["GC-DEMO-PHONE-001"];
-  if (lowerName.includes("headphone")) return CATALOG_GALLERIES["GC-DEMO-HEADPHONES-001"];
-  if (lowerName.includes("charger")) return CATALOG_GALLERIES["GC-DEMO-CHARGER-001"];
-  if (lowerName.includes("mug")) return CATALOG_GALLERIES["GC-DEMO-MUG-001"];
-
-  // 4. If product has real, non-placeholder images in DB, return them
+  // 1. If product has real, non-placeholder images in DB, return them
   const validImages = (product.images || []).filter((img) => !isGenericPlaceholder(img.url));
   if (validImages.length > 0) {
     return validImages.map((img, index) => ({
@@ -202,6 +183,25 @@ export function getProductGallery(product?: {
       position: img.position ?? index,
     }));
   }
+
+  // 2. Check if SKU has curated gallery
+  const sku = product.sku?.toUpperCase();
+  if (sku && CATALOG_GALLERIES[sku]) {
+    return CATALOG_GALLERIES[sku];
+  }
+
+  // 3. Check if slug maps to curated gallery
+  const slug = product.slug?.toLowerCase();
+  if (slug && SLUG_MAP[slug] && CATALOG_GALLERIES[SLUG_MAP[slug]]) {
+    return CATALOG_GALLERIES[SLUG_MAP[slug]];
+  }
+
+  // 4. Check by name pattern
+  const lowerName = (product.name || "").toLowerCase();
+  if (lowerName.includes("phone")) return CATALOG_GALLERIES["GC-DEMO-PHONE-001"];
+  if (lowerName.includes("headphone")) return CATALOG_GALLERIES["GC-DEMO-HEADPHONES-001"];
+  if (lowerName.includes("charger")) return CATALOG_GALLERIES["GC-DEMO-CHARGER-001"];
+  if (lowerName.includes("mug")) return CATALOG_GALLERIES["GC-DEMO-MUG-001"];
 
   // 5. Fallback SVG
   const categoryName = product.category?.name || "Everyday";

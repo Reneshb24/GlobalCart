@@ -487,7 +487,12 @@
 .order-action-btn.cancel-btn:hover { background: #fff1f0; border-color: #b94a3a; }
 .tracking-box { margin-top: 10px; padding: 12px; border-radius: 6px; background: #f6f9f5; border: 1px solid #e0eae2; font-size: 11px; }
 .tracking-box-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; color: #22372b; }
-.tracking-status-badge { padding: 3px 7px; border-radius: 12px; background: #e5f1e7; color: #235f3d; font-weight: 700; font-size: 10px; }
+.tracking-status-badge { padding: 3px 8px; border-radius: 12px; background: #e5f1e7; color: #235f3d; font-weight: 700; font-size: 10px; text-transform: uppercase; }
+.tracking-status-badge.badge-preparing { background: #fef3c7; color: #92400e; }
+.tracking-status-badge.badge-dispatched { background: #e0e7ff; color: #3730a3; }
+.tracking-status-badge.badge-in_transit { background: #dbeafe; color: #1e40af; }
+.tracking-status-badge.badge-out_for_delivery { background: #fae8ff; color: #86198f; }
+.tracking-status-badge.badge-delivered { background: #dcfce7; color: #15803d; }
 .tracking-meta { display: grid; gap: 4px; color: #526356; }
 .return-card { padding: 16px; border: 1px solid #e1e8e2; border-radius: 9px; margin-bottom: 12px; }
 .return-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }

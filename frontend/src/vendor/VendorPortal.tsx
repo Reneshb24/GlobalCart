@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingBag, Package, Warehouse, ArrowLeft, LogOut,
-  Plus, RefreshCw, AlertTriangle, Eye, Store, X
+  Plus, RefreshCw, AlertTriangle, Eye, Store, X, Camera
 } from "lucide-react";
 import { api, clearAuthToken, getApiErrorMessage, getAuthToken, setAuthToken } from "../lib/api";
 import ProductImg from "../ProductImg";
@@ -16,6 +16,16 @@ type VendorUser = {
   firstName: string;
   lastName: string;
   role: string;
+};
+
+type VendorWarehouse = {
+  id: string;
+  code: string;
+  name: string;
+  city: string;
+  countryCode: string;
+  region?: string | null;
+  isActive: boolean;
 };
 
 type VendorMetrics = {
@@ -119,11 +129,18 @@ export default function VendorPortal() {
     currency: "USD",
     categoryId: "",
     status: "ACTIVE",
-    imageUrl: ""
+    imageUrl: "",
+    image1: "",
+    image2: "",
+    image3: "",
+    image4: "",
+    initialQuantity: 10,
+    warehouseId: ""
   });
 
-  // Categories for select
+  // Categories & Warehouses for select
   const [categories, setCategories] = useState<VendorCategory[]>([]);
+  const [warehouses, setWarehouses] = useState<VendorWarehouse[]>([]);
 
   // Inventory
   const [inventoryRows, setInventoryRows] = useState<VendorInventoryRow[]>([]);
@@ -223,6 +240,15 @@ export default function VendorPortal() {
     }
   }, []);
 
+  const loadWarehouses = useCallback(async () => {
+    try {
+      const res = await api.get<{ warehouses: VendorWarehouse[] }>("/vendor/warehouses");
+      setWarehouses(res.data.warehouses ?? []);
+    } catch {
+      // Non-critical
+    }
+  }, []);
+
   const loadInventory = useCallback(async () => {
     try {
       const res = await api.get<{ inventory: VendorInventoryRow[] }>("/vendor/inventory");
@@ -244,13 +270,13 @@ export default function VendorPortal() {
   useEffect(() => {
     if (!currentUser) return;
     const timer = window.setTimeout(() => {
-      if (activeTab === "dashboard") void loadDashboard();
-      else if (activeTab === "products") { void loadProducts(); void loadCategories(); }
+      if (activeTab === "dashboard") { void loadDashboard(); void loadWarehouses(); }
+      else if (activeTab === "products") { void loadProducts(); void loadCategories(); void loadWarehouses(); }
       else if (activeTab === "inventory") void loadInventory();
       else if (activeTab === "orders") void loadOrders();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [currentUser, activeTab, loadDashboard, loadProducts, loadCategories, loadInventory, loadOrders]);
+  }, [currentUser, activeTab, loadDashboard, loadProducts, loadCategories, loadWarehouses, loadInventory, loadOrders]);
 
   function switchTab(tab: VendorTab) {
     setActiveTab(tab);
@@ -260,6 +286,15 @@ export default function VendorPortal() {
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
     try {
+      const images = [
+        { url: productForm.image1.trim(), altText: `${productForm.name} Front View`, position: 0 },
+        { url: productForm.image2.trim(), altText: `${productForm.name} Side Profile`, position: 1 },
+        { url: productForm.image3.trim(), altText: `${productForm.name} Lifestyle View`, position: 2 },
+        { url: productForm.image4.trim(), altText: `${productForm.name} Detail Macro`, position: 3 },
+      ].filter(img => Boolean(img.url));
+
+      const primaryUrl = images[0]?.url || productForm.imageUrl.trim() || undefined;
+
       if (editingProduct) {
         await api.patch(`/vendor/products/${editingProduct.id}`, {
           name: productForm.name,
@@ -268,7 +303,8 @@ export default function VendorPortal() {
           price: Number(productForm.price),
           categoryId: productForm.categoryId,
           status: productForm.status,
-          ...(productForm.imageUrl.trim() ? { imageUrl: productForm.imageUrl.trim() } : {})
+          imageUrl: primaryUrl,
+          images: images.length > 0 ? images : undefined
         });
         setFeedback({ type: "success", text: "Product updated successfully." });
       } else {
@@ -282,9 +318,12 @@ export default function VendorPortal() {
           currency: productForm.currency,
           categoryId: productForm.categoryId,
           status: productForm.status,
-          ...(productForm.imageUrl.trim() ? { imageUrl: productForm.imageUrl.trim() } : {})
+          imageUrl: primaryUrl,
+          images: images.length > 0 ? images : undefined,
+          initialQuantity: Number(productForm.initialQuantity) || 0,
+          warehouseId: productForm.warehouseId || undefined
         });
-        setFeedback({ type: "success", text: "Product added to your catalog." });
+        setFeedback({ type: "success", text: "Product created with 4-angle studio photography and stocked in warehouse." });
       }
       setShowProductModal(false);
       setEditingProduct(null);
@@ -553,7 +592,13 @@ export default function VendorPortal() {
                           currency: "USD",
                           categoryId: categories[0]?.id || "",
                           status: "ACTIVE",
-                          imageUrl: ""
+                          imageUrl: "",
+                          image1: "",
+                          image2: "",
+                          image3: "",
+                          image4: "",
+                          initialQuantity: 10,
+                          warehouseId: warehouses[0]?.id || ""
                         });
                         setShowProductModal(true);
                       }}
@@ -585,6 +630,7 @@ export default function VendorPortal() {
                             (sum, inv) => sum + (inv.quantity - inv.reserved),
                             0
                           );
+                          const angleCount = (p.images && p.images.length > 0) ? p.images.length : 1;
                           return (
                             <tr key={p.id}>
                               <td>
@@ -596,7 +642,14 @@ export default function VendorPortal() {
                                 />
                               </td>
                               <td><code>{p.sku}</code></td>
-                              <td><strong>{p.name}</strong></td>
+                              <td>
+                                <strong>{p.name}</strong>
+                                {angleCount > 1 && (
+                                  <span className="vendor-badge badge-active" style={{ marginLeft: "8px", fontSize: "10px" }}>
+                                    {angleCount} Angles
+                                  </span>
+                                )}
+                              </td>
                               <td>{p.category?.name || "Uncategorized"}</td>
                               <td>{p.currency} {Number(p.price).toFixed(2)}</td>
                               <td>
@@ -613,6 +666,7 @@ export default function VendorPortal() {
                                 <button
                                   className="vendor-btn-secondary vendor-btn-sm"
                                   onClick={() => {
+                                    const sortedImages = [...(p.images || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
                                     setEditingProduct(p);
                                     setProductForm({
                                       sku: p.sku,
@@ -624,7 +678,13 @@ export default function VendorPortal() {
                                       currency: p.currency,
                                       categoryId: p.categoryId,
                                       status: p.status,
-                                      imageUrl: p.images?.[0]?.url || ""
+                                      imageUrl: sortedImages[0]?.url || "",
+                                      image1: sortedImages.find((i) => i.position === 0)?.url || sortedImages[0]?.url || "",
+                                      image2: sortedImages.find((i) => i.position === 1)?.url || sortedImages[1]?.url || "",
+                                      image3: sortedImages.find((i) => i.position === 2)?.url || sortedImages[2]?.url || "",
+                                      image4: sortedImages.find((i) => i.position === 3)?.url || sortedImages[3]?.url || "",
+                                      initialQuantity: p.inventory?.reduce((sum, inv) => sum + (inv.quantity || 0), 0) || 0,
+                                      warehouseId: warehouses[0]?.id || ""
                                     });
                                     setShowProductModal(true);
                                   }}
@@ -939,26 +999,155 @@ export default function VendorPortal() {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: "12px" }}>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Product Image URL (Optional)</label>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash.com/..."
-                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
-                    value={productForm.imageUrl}
-                    onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })}
-                  />
-                  {productForm.imageUrl && (
-                    <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "11px", color: "#78716c" }}>Live preview:</span>
-                      <ProductImg
-                        src={productForm.imageUrl}
-                        alt="Product preview"
-                        style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "6px", border: "1px solid #d6d3d1", background: "#f5f5f4" }}
-                        fallbackName={productForm.name || "Preview"}
+                {!editingProduct && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                        Initial Stock Quantity
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100000"
+                        style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
+                        value={productForm.initialQuantity}
+                        onChange={(e) => setProductForm({ ...productForm, initialQuantity: parseInt(e.target.value, 10) || 0 })}
                       />
                     </div>
-                  )}
+                    <div>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                        Nearest Fulfillment Warehouse
+                      </label>
+                      <select
+                        style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
+                        value={productForm.warehouseId}
+                        onChange={(e) => setProductForm({ ...productForm, warehouseId: e.target.value })}
+                      >
+                        <option value="">Select Nearest Warehouse</option>
+                        {warehouses.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({w.code} - {w.city}, {w.countryCode})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4-Angle Photography Studio */}
+                <div style={{ border: "1px solid #e7e5e4", borderRadius: "8px", padding: "16px", background: "#fafaf9", margin: "16px 0" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#1c1917", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Camera size={16} /> 4-Angle Photography Studio
+                      </h4>
+                      <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#78716c" }}>
+                        Provide 4 perspectives of your product (Front, Side, Lifestyle, Detail Macro).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="vendor-btn-secondary vendor-btn-sm"
+                      onClick={() => {
+                        setProductForm({
+                          ...productForm,
+                          imageUrl: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80",
+                          image1: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80",
+                          image2: "https://images.unsplash.com/photo-1484704849700-f032a568e944?auto=format&fit=crop&w=800&q=80",
+                          image3: "https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=800&q=80",
+                          image4: "https://images.unsplash.com/photo-1583394838336-acd977736f90?auto=format&fit=crop&w=800&q=80"
+                        });
+                      }}
+                    >
+                      Fill Sample Studio Photos
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
+                    {/* Angle 1 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 1: Front Hero *
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Front View)"
+                        value={productForm.image1}
+                        onChange={(e) => setProductForm({ ...productForm, image1: e.target.value, imageUrl: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                      />
+                      <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image1 ? (
+                          <ProductImg src={productForm.image1} alt="Front Hero" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 1"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#a8a29e" }}>No image</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Angle 2 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 2: Side Profile
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Side Profile)"
+                        value={productForm.image2}
+                        onChange={(e) => setProductForm({ ...productForm, image2: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                      />
+                      <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image2 ? (
+                          <ProductImg src={productForm.image2} alt="Side Profile" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 2"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#a8a29e" }}>No image</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Angle 3 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 3: Lifestyle View
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (In Context)"
+                        value={productForm.image3}
+                        onChange={(e) => setProductForm({ ...productForm, image3: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                      />
+                      <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image3 ? (
+                          <ProductImg src={productForm.image3} alt="Lifestyle" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 3"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#a8a29e" }}>No image</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Angle 4 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 4: Detail Macro
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Macro Close-up)"
+                        value={productForm.image4}
+                        onChange={(e) => setProductForm({ ...productForm, image4: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                      />
+                      <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image4 ? (
+                          <ProductImg src={productForm.image4} alt="Detail Macro" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 4"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#a8a29e" }}>No image</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="vendor-modal-footer">
@@ -966,7 +1155,7 @@ export default function VendorPortal() {
                   Cancel
                 </button>
                 <button type="submit" className="vendor-btn-primary">
-                  {editingProduct ? "Save Changes" : "Create Product"}
+                  {editingProduct ? "Save Changes" : "Create Product with 4 Angles"}
                 </button>
               </div>
             </form>

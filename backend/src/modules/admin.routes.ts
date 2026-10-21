@@ -24,7 +24,15 @@ const productCreateSchema = z.object({
   categoryId: z.string().uuid(),
   vendorId: z.string().uuid().nullable().optional(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).default("DRAFT"),
-  imageUrl: z.string().url().max(2000).nullable().optional()
+  imageUrl: z.string().url().max(2000).or(z.literal("")).nullable().optional(),
+  images: z.array(z.object({
+    url: z.string().url().max(2000),
+    altText: z.string().max(200).optional(),
+    position: z.number().int().min(0).max(10).optional()
+  })).optional(),
+  imageUrls: z.array(z.string().url().max(2000).or(z.literal(""))).optional(),
+  initialQuantity: z.number().int().min(0).max(1000000).optional(),
+  warehouseId: z.string().uuid().nullable().optional()
 });
 
 const productUpdateSchema = productCreateSchema.partial()
@@ -118,6 +126,37 @@ adminRouter.post("/products", async (req, res) => {
 
   try {
     const input = parsed.data;
+
+    // Collect all 4 angle images
+    const imageList: { url: string; altText: string; position: number }[] = [];
+    if (input.images && input.images.length > 0) {
+      input.images.forEach((img, idx) => {
+        if (img.url && img.url.trim()) {
+          imageList.push({
+            url: img.url.trim(),
+            altText: img.altText || `${input.name} view ${idx + 1}`,
+            position: img.position !== undefined ? img.position : idx
+          });
+        }
+      });
+    } else if (input.imageUrls && input.imageUrls.length > 0) {
+      input.imageUrls.forEach((url, idx) => {
+        if (url && url.trim()) {
+          imageList.push({
+            url: url.trim(),
+            altText: `${input.name} view ${idx + 1}`,
+            position: idx
+          });
+        }
+      });
+    } else if (input.imageUrl && input.imageUrl.trim()) {
+      imageList.push({
+        url: input.imageUrl.trim(),
+        altText: input.name,
+        position: 0
+      });
+    }
+
     const product = await prisma.product.create({
       data: {
         sku: input.sku,
@@ -130,13 +169,9 @@ adminRouter.post("/products", async (req, res) => {
         categoryId: input.categoryId,
         vendorId: input.vendorId ?? null,
         status: input.status,
-        ...(input.imageUrl ? {
+        ...(imageList.length > 0 ? {
           images: {
-            create: [{
-              url: input.imageUrl,
-              altText: input.name,
-              position: 0
-            }]
+            create: imageList
           }
         } : {})
       },
@@ -149,6 +184,32 @@ adminRouter.post("/products", async (req, res) => {
         }
       }
     });
+
+    // If initialQuantity is provided with warehouseId, create inventory record
+    if (input.initialQuantity !== undefined && input.initialQuantity > 0 && input.warehouseId) {
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id: input.warehouseId }
+      });
+      if (warehouse && warehouse.isActive) {
+        await prisma.inventory.upsert({
+          where: {
+            productId_warehouseId: {
+              productId: product.id,
+              warehouseId: input.warehouseId
+            }
+          },
+          update: {
+            quantity: input.initialQuantity
+          },
+          create: {
+            productId: product.id,
+            warehouseId: input.warehouseId,
+            quantity: input.initialQuantity,
+            reserved: 0
+          }
+        });
+      }
+    }
 
     res.status(201).json({ product });
   } catch (error) {
@@ -189,25 +250,48 @@ adminRouter.patch("/products/:productId", async (req, res) => {
       } : {})
     };
 
-    if (input.imageUrl !== undefined && input.imageUrl !== null) {
-      const existingImg = await prisma.productImage.findFirst({
-        where: { productId: req.params.productId, position: 0 }
+    // Update images if provided
+    const updateImages: { url: string; altText: string; position: number }[] = [];
+    if (input.images && input.images.length > 0) {
+      input.images.forEach((img, idx) => {
+        if (img.url && img.url.trim()) {
+          updateImages.push({
+            url: img.url.trim(),
+            altText: img.altText || `${input.name || "Product"} view ${idx + 1}`,
+            position: img.position !== undefined ? img.position : idx
+          });
+        }
       });
-      if (existingImg) {
-        await prisma.productImage.update({
-          where: { id: existingImg.id },
-          data: { url: input.imageUrl, altText: input.name || undefined }
-        });
-      } else {
-        await prisma.productImage.create({
-          data: {
-            productId: req.params.productId,
-            url: input.imageUrl,
-            altText: input.name || "Product image",
-            position: 0
-          }
-        });
-      }
+    } else if (input.imageUrls && input.imageUrls.length > 0) {
+      input.imageUrls.forEach((url, idx) => {
+        if (url && url.trim()) {
+          updateImages.push({
+            url: url.trim(),
+            altText: `${input.name || "Product"} view ${idx + 1}`,
+            position: idx
+          });
+        }
+      });
+    } else if (input.imageUrl !== undefined && input.imageUrl !== null && input.imageUrl.trim()) {
+      updateImages.push({
+        url: input.imageUrl.trim(),
+        altText: input.name || "Product",
+        position: 0
+      });
+    }
+
+    if (updateImages.length > 0) {
+      await prisma.productImage.deleteMany({
+        where: { productId: req.params.productId }
+      });
+      await prisma.productImage.createMany({
+        data: updateImages.map(img => ({
+          productId: req.params.productId,
+          url: img.url,
+          altText: img.altText,
+          position: img.position
+        }))
+      });
     }
 
     const product = await prisma.product.update({

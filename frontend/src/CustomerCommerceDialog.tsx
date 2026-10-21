@@ -578,51 +578,127 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
 
                         {/* Shipment Tracking Panel */}
                         {shipments !== undefined && (
-                          <div className="tracking-box">
-                            <div className="tracking-box-heading">
-                              <span>
-                                <Truck size={14} style={{ display: "inline", marginRight: "6px" }} />
-                                Shipment Tracking
+                          <div className="tracking-box" style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px", marginTop: "14px" }}>
+                            <div className="tracking-box-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                              <span style={{ fontWeight: 700, fontSize: "13px", color: "#1e293b", display: "flex", alignItems: "center", gap: "6px" }}>
+                                <Truck size={16} /> Live Delivery Progression
                               </span>
                               {shipments[0] && (
-                                <span className="tracking-status-badge">
+                                <span className={`tracking-status-badge badge-${shipments[0].status.toLowerCase()}`}>
                                   {shipments[0].status.replaceAll("_", " ")}
                                 </span>
                               )}
                             </div>
+
                             {shipments.length === 0 ? (
-                              <p style={{ margin: 0, color: "#68766a" }}>
-                                Fulfillment is preparing your order. Tracking numbers are generated upon dispatch.
-                              </p>
-                            ) : (
-                              shipments.map((s) => (
-                                <div key={s.id} className="tracking-meta">
-                                  <div>
-                                    <strong>Carrier:</strong> {s.carrier || "Standard Delivery"}
-                                  </div>
-                                  {s.trackingNumber && (
-                                    <div>
-                                      <strong>Tracking #:</strong> {s.trackingNumber}
+                              <div>
+                                <div style={{ display: "flex", justifyContent: "space-between", position: "relative", margin: "16px 0 10px" }}>
+                                  {[
+                                    { label: "Order Placed", done: true },
+                                    { label: "Processing", done: order.status === "PROCESSING" || order.status === "CONFIRMED" },
+                                    { label: "Preparing Dispatch", done: false },
+                                    { label: "In Transit", done: false },
+                                    { label: "Delivered", done: false }
+                                  ].map((st, i) => (
+                                    <div key={st.label} style={{ flex: 1, textAlign: "center" }}>
+                                      <div style={{
+                                        width: "26px", height: "26px", borderRadius: "50%", margin: "0 auto",
+                                        background: st.done ? "#10b981" : "#e2e8f0",
+                                        color: st.done ? "#fff" : "#64748b",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        fontSize: "11px", fontWeight: 700
+                                      }}>
+                                        {st.done ? "✓" : i + 1}
+                                      </div>
+                                      <div style={{ fontSize: "11px", marginTop: "4px", color: st.done ? "#047857" : "#94a3b8", fontWeight: st.done ? 600 : 400 }}>
+                                        {st.label}
+                                      </div>
                                     </div>
-                                  )}
-                                  {s.shippedAt && (
-                                    <div>
-                                      <strong>Dispatched:</strong> {new Date(s.shippedAt).toLocaleString()}
-                                    </div>
-                                  )}
-                                  {s.estimatedDelivery && (
-                                    <div>
-                                      <strong>Est. Delivery:</strong>{" "}
-                                      {new Date(s.estimatedDelivery).toLocaleDateString()}
-                                    </div>
-                                  )}
-                                  {s.deliveredAt && (
-                                    <div>
-                                      <strong>Delivered:</strong> {new Date(s.deliveredAt).toLocaleString()}
-                                    </div>
-                                  )}
+                                  ))}
                                 </div>
-                              ))
+                                <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: "12px", textAlign: "center" }}>
+                                  Fulfillment center is packing your order. Carrier tracking code will appear once dispatched.
+                                </p>
+                              </div>
+                            ) : (
+                              shipments.map((s) => {
+                                const deliverySteps = [
+                                  { key: "ORDER_PLACED", label: "Confirmed" },
+                                  { key: "PREPARING", label: "Preparing" },
+                                  { key: "DISPATCHED", label: "Dispatched" },
+                                  { key: "IN_TRANSIT", label: "In Transit" },
+                                  { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
+                                  { key: "DELIVERED", label: "Delivered" }
+                                ];
+                                const orderStatusMap: Record<string, number> = {
+                                  PREPARING: 1,
+                                  DISPATCHED: 2,
+                                  IN_TRANSIT: 3,
+                                  OUT_FOR_DELIVERY: 4,
+                                  DELIVERED: 5
+                                };
+                                const activeStageIdx = orderStatusMap[s.status] ?? 1;
+
+                                return (
+                                  <div key={s.id} style={{ marginTop: "8px" }}>
+                                    {/* Visual Stepper */}
+                                    <div style={{ display: "flex", justifyContent: "space-between", margin: "16px 0 12px" }}>
+                                      {deliverySteps.map((step, idx) => {
+                                        const isDone = activeStageIdx >= idx;
+                                        const isCurrent = activeStageIdx === idx;
+                                        return (
+                                          <div key={step.key} style={{ flex: 1, textAlign: "center" }}>
+                                            <div style={{
+                                              width: "26px", height: "26px", borderRadius: "50%", margin: "0 auto",
+                                              background: isDone ? (isCurrent && s.status !== "DELIVERED" ? "#2563eb" : "#10b981") : "#e2e8f0",
+                                              color: isDone ? "#ffffff" : "#64748b",
+                                              display: "flex", alignItems: "center", justifyContent: "center",
+                                              fontSize: "11px", fontWeight: 700,
+                                              boxShadow: isCurrent ? "0 0 0 3px rgba(37, 99, 235, 0.2)" : "none"
+                                            }}>
+                                              {isDone && !isCurrent ? "✓" : idx + 1}
+                                            </div>
+                                            <div style={{
+                                              fontSize: "10px", marginTop: "4px",
+                                              color: isCurrent ? "#1e293b" : isDone ? "#047857" : "#94a3b8",
+                                              fontWeight: isCurrent ? 700 : isDone ? 600 : 400
+                                            }}>
+                                              {step.label}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+
+                                    {/* Carrier & Tracking Meta Cards */}
+                                    <div style={{ background: "#ffffff", padding: "12px", borderRadius: "8px", border: "1px solid #e2e8f0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "10px", fontSize: "12px" }}>
+                                      <div>
+                                        <span style={{ color: "#64748b" }}>Carrier:</span> <strong>{s.carrier || "Global Express"}</strong>
+                                      </div>
+                                      {s.trackingNumber && (
+                                        <div>
+                                          <span style={{ color: "#64748b" }}>Tracking #:</span> <code>{s.trackingNumber}</code>
+                                        </div>
+                                      )}
+                                      {s.shippedAt && (
+                                        <div>
+                                          <span style={{ color: "#64748b" }}>Dispatched:</span> {new Date(s.shippedAt).toLocaleString()}
+                                        </div>
+                                      )}
+                                      {s.deliveredAt && (
+                                        <div>
+                                          <span style={{ color: "#64748b" }}>Delivered:</span> <strong style={{ color: "#166534" }}>{new Date(s.deliveredAt).toLocaleString()}</strong>
+                                        </div>
+                                      )}
+                                      {s.estimatedDelivery && !s.deliveredAt && (
+                                        <div>
+                                          <span style={{ color: "#64748b" }}>Est. Delivery:</span> {new Date(s.estimatedDelivery).toLocaleDateString()}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
                             )}
                           </div>
                         )}

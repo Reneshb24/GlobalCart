@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingCart, Package, Tags, Warehouse, RotateCcw,
   Star, Tag, Users, CreditCard, ArrowLeft, LogOut, Plus,
-  RefreshCw, CheckCircle, XCircle, AlertTriangle, Truck, Eye, ShieldCheck, X
+  RefreshCw, CheckCircle, XCircle, AlertTriangle, Truck, Eye, ShieldCheck, X,
+  Store, Camera
 } from "lucide-react";
 import { api, clearAuthToken, getApiErrorMessage, getAuthToken, setAuthToken } from "../lib/api";
 import ProductImg from "../ProductImg";
@@ -13,6 +14,7 @@ type AdminTab =
   | "dashboard"
   | "orders"
   | "products"
+  | "vendors"
   | "categories"
   | "inventory"
   | "returns"
@@ -82,6 +84,16 @@ type AdminOrder = {
   payments?: { id: string; status: string; method: string; amount: number; refunds?: { id: string; amount: number }[] }[];
 };
 
+type AdminVendor = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  _count?: { products: number };
+};
+
 type AdminProduct = {
   id: string;
   sku: string;
@@ -92,6 +104,8 @@ type AdminProduct = {
   price: number;
   currency: string;
   categoryId: string;
+  vendorId?: string | null;
+  vendor?: { id: string; name: string } | null;
   status: string;
   category?: { id: string; name: string; slug: string } | null;
   images?: { id: string; url: string; altText?: string | null; position?: number }[];
@@ -230,8 +244,25 @@ export default function AdminPortal() {
     price: 0,
     currency: "USD",
     categoryId: "",
+    vendorId: "",
     status: "DRAFT",
-    imageUrl: ""
+    imageUrl: "",
+    image1: "",
+    image2: "",
+    image3: "",
+    image4: "",
+    initialQuantity: 10,
+    warehouseId: ""
+  });
+
+  const [vendors, setVendors] = useState<AdminVendor[]>([]);
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [showVendorModal, setShowVendorModal] = useState(false);
+  const [vendorForm, setVendorForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    isActive: true
   });
 
   const [categories, setCategories] = useState<AdminCategory[]>([]);
@@ -375,13 +406,36 @@ export default function AdminPortal() {
       if (productStatusFilter) prods = prods.filter((p) => p.status === productStatusFilter);
       if (productSearch.trim()) {
         const q = productSearch.toLowerCase();
-        prods = prods.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+        prods = prods.filter((p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.sku.toLowerCase().includes(q) ||
+          (p.brand && p.brand.toLowerCase().includes(q)) ||
+          (p.vendor?.name && p.vendor.name.toLowerCase().includes(q))
+        );
       }
       setProducts(prods);
     } catch (err) {
       setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to load products.") });
     }
   }, [productStatusFilter, productSearch]);
+
+  const loadWarehouses = useCallback(async () => {
+    try {
+      const res = await api.get<{ warehouses: AdminWarehouse[] }>("/admin/warehouses");
+      setWarehouses(res.data.warehouses ?? []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const loadVendors = useCallback(async () => {
+    try {
+      const res = await api.get<{ vendors: AdminVendor[] }>("/admin/vendors");
+      setVendors(res.data.vendors ?? []);
+    } catch (err) {
+      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to load vendors.") });
+    }
+  }, []);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -462,7 +516,8 @@ export default function AdminPortal() {
     const timer = window.setTimeout(() => {
       if (activeTab === "dashboard") void loadDashboard();
       else if (activeTab === "orders") void loadOrders();
-      else if (activeTab === "products") { void loadProducts(); void loadCategories(); }
+      else if (activeTab === "products") { void loadProducts(); void loadCategories(); void loadVendors(); void loadWarehouses(); }
+      else if (activeTab === "vendors") { void loadVendors(); void loadWarehouses(); }
       else if (activeTab === "categories") void loadCategories();
       else if (activeTab === "inventory") void loadInventory();
       else if (activeTab === "returns") void loadReturns();
@@ -472,7 +527,7 @@ export default function AdminPortal() {
       else if (activeTab === "payments") void loadPayments();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [currentUser, activeTab, loadDashboard, loadOrders, loadProducts, loadCategories, loadInventory, loadReturns, loadReviews, loadOffers, loadCustomers, loadPayments]);
+  }, [currentUser, activeTab, loadDashboard, loadOrders, loadProducts, loadCategories, loadInventory, loadReturns, loadReviews, loadOffers, loadCustomers, loadPayments, loadVendors, loadWarehouses]);
 
   function switchTab(tab: AdminTab) {
     setActiveTab(tab);
@@ -582,10 +637,19 @@ export default function AdminPortal() {
     }
   }
 
-  // Create Product
+  // Create or Update Product
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
     try {
+      const images = [
+        { url: productForm.image1.trim(), altText: `${productForm.name} Front View`, position: 0 },
+        { url: productForm.image2.trim(), altText: `${productForm.name} Side Profile`, position: 1 },
+        { url: productForm.image3.trim(), altText: `${productForm.name} Lifestyle View`, position: 2 },
+        { url: productForm.image4.trim(), altText: `${productForm.name} Detail Macro`, position: 3 },
+      ].filter(img => Boolean(img.url));
+
+      const primaryUrl = images[0]?.url || productForm.imageUrl.trim() || undefined;
+
       if (editingProduct) {
         await api.patch(`/admin/products/${editingProduct.id}`, {
           name: productForm.name,
@@ -593,8 +657,10 @@ export default function AdminPortal() {
           brand: productForm.brand || null,
           price: Number(productForm.price),
           categoryId: productForm.categoryId,
+          vendorId: productForm.vendorId || null,
           status: productForm.status,
-          ...(productForm.imageUrl.trim() ? { imageUrl: productForm.imageUrl.trim() } : {})
+          imageUrl: primaryUrl,
+          images: images.length > 0 ? images : undefined
         });
         setFeedback({ type: "success", text: "Product updated successfully." });
       } else {
@@ -607,16 +673,49 @@ export default function AdminPortal() {
           price: Number(productForm.price),
           currency: productForm.currency,
           categoryId: productForm.categoryId,
+          vendorId: productForm.vendorId || null,
           status: productForm.status,
-          ...(productForm.imageUrl.trim() ? { imageUrl: productForm.imageUrl.trim() } : {})
+          imageUrl: primaryUrl,
+          images: images.length > 0 ? images : undefined,
+          initialQuantity: Number(productForm.initialQuantity) || 0,
+          warehouseId: productForm.warehouseId || undefined
         });
-        setFeedback({ type: "success", text: "Product created successfully." });
+        setFeedback({ type: "success", text: "Product created successfully with catalog imagery and stock." });
       }
       setShowProductModal(false);
       setEditingProduct(null);
       void loadProducts();
     } catch (err) {
       setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to save product.") });
+    }
+  }
+
+  // Vendors management
+  async function handleSaveVendor(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api.post("/admin/vendors", {
+        name: vendorForm.name.trim(),
+        email: vendorForm.email.trim() || null,
+        phone: vendorForm.phone.trim() || null,
+        isActive: vendorForm.isActive
+      });
+      setFeedback({ type: "success", text: `Vendor "${vendorForm.name}" registered successfully.` });
+      setShowVendorModal(false);
+      setVendorForm({ name: "", email: "", phone: "", isActive: true });
+      void loadVendors();
+    } catch (err) {
+      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to register vendor.") });
+    }
+  }
+
+  async function handleToggleVendorStatus(vendorId: string, currentActive: boolean) {
+    try {
+      await api.patch(`/admin/vendors/${vendorId}`, { isActive: !currentActive });
+      setFeedback({ type: "success", text: `Vendor status updated to ${!currentActive ? "ACTIVE" : "INACTIVE"}.` });
+      void loadVendors();
+    } catch (err) {
+      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to update vendor status.") });
     }
   }
 
@@ -801,6 +900,9 @@ export default function AdminPortal() {
           <button className={`admin-nav-item ${activeTab === "products" ? "active" : ""}`} onClick={() => switchTab("products")}>
             <Package size={18} /> Catalog Products
           </button>
+          <button className={`admin-nav-item ${activeTab === "vendors" ? "active" : ""}`} onClick={() => switchTab("vendors")}>
+            <Store size={18} /> Marketplace Vendors
+          </button>
           <button className={`admin-nav-item ${activeTab === "categories" ? "active" : ""}`} onClick={() => switchTab("categories")}>
             <Tags size={18} /> Categories
           </button>
@@ -843,6 +945,7 @@ export default function AdminPortal() {
             {activeTab === "dashboard" && "Platform Operations Overview"}
             {activeTab === "orders" && "Orders & Order Fulfillment"}
             {activeTab === "products" && "Product Catalog Management"}
+            {activeTab === "vendors" && "Marketplace Vendors & Partner Network"}
             {activeTab === "categories" && "Category Taxonomy"}
             {activeTab === "inventory" && "Warehouses & Inventory Distribution"}
             {activeTab === "returns" && "Customer Returns & Refund Processing"}
@@ -858,6 +961,7 @@ export default function AdminPortal() {
                 if (activeTab === "dashboard") void loadDashboard();
                 else if (activeTab === "orders") void loadOrders();
                 else if (activeTab === "products") void loadProducts();
+                else if (activeTab === "vendors") void loadVendors();
                 else if (activeTab === "categories") void loadCategories();
                 else if (activeTab === "inventory") void loadInventory();
                 else if (activeTab === "returns") void loadReturns();
@@ -1104,8 +1208,15 @@ export default function AdminPortal() {
                           price: 19.99,
                           currency: "USD",
                           categoryId: categories[0]?.id || "",
+                          vendorId: "",
                           status: "ACTIVE",
-                          imageUrl: ""
+                          imageUrl: "",
+                          image1: "",
+                          image2: "",
+                          image3: "",
+                          image4: "",
+                          initialQuantity: 10,
+                          warehouseId: warehouses[0]?.id || ""
                         });
                         setShowProductModal(true);
                       }}
@@ -1122,6 +1233,7 @@ export default function AdminPortal() {
                         <th>SKU</th>
                         <th>Product Name</th>
                         <th>Category</th>
+                        <th>Vendor</th>
                         <th>Price</th>
                         <th>Stock Available</th>
                         <th>Status</th>
@@ -1130,13 +1242,14 @@ export default function AdminPortal() {
                     </thead>
                     <tbody>
                       {products.length === 0 ? (
-                        <tr><td colSpan={8} className="admin-empty">No products found.</td></tr>
+                        <tr><td colSpan={9} className="admin-empty">No products found.</td></tr>
                       ) : (
                         products.map((p) => {
                           const totalAvailable = (p.inventory ?? []).reduce(
                             (sum, inv) => sum + (inv.quantity - inv.reserved),
                             0
                           );
+                          const angleCount = (p.images && p.images.length > 0) ? p.images.length : 1;
                           return (
                             <tr key={p.id}>
                               <td>
@@ -1148,8 +1261,20 @@ export default function AdminPortal() {
                                 />
                               </td>
                               <td><code>{p.sku}</code></td>
-                              <td><strong>{p.name}</strong></td>
+                              <td>
+                                <strong>{p.name}</strong>
+                                {angleCount > 1 && (
+                                  <span className="admin-badge badge-info" style={{ marginLeft: "8px", fontSize: "10px" }}>
+                                    {angleCount} Angles
+                                  </span>
+                                )}
+                              </td>
                               <td>{p.category?.name || "Uncategorized"}</td>
+                              <td>
+                                <span className="admin-badge" style={{ background: p.vendor ? "#f1f5f9" : "#ecfdf5", color: p.vendor ? "#334155" : "#047857" }}>
+                                  {p.vendor?.name || "Direct (In-House)"}
+                                </span>
+                              </td>
                               <td>{p.currency} {Number(p.price).toFixed(2)}</td>
                               <td>
                                 <span style={{ fontWeight: 600, color: totalAvailable <= 5 ? "#dc2626" : "#166534" }}>
@@ -1165,6 +1290,7 @@ export default function AdminPortal() {
                                 <button
                                   className="admin-btn-secondary admin-btn-sm"
                                   onClick={() => {
+                                    const sortedImages = [...(p.images || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
                                     setEditingProduct(p);
                                     setProductForm({
                                       sku: p.sku,
@@ -1175,8 +1301,15 @@ export default function AdminPortal() {
                                       price: Number(p.price),
                                       currency: p.currency,
                                       categoryId: p.categoryId,
+                                      vendorId: p.vendorId || p.vendor?.id || "",
                                       status: p.status,
-                                      imageUrl: p.images?.[0]?.url || ""
+                                      imageUrl: sortedImages[0]?.url || "",
+                                      image1: sortedImages.find((i) => i.position === 0)?.url || sortedImages[0]?.url || "",
+                                      image2: sortedImages.find((i) => i.position === 1)?.url || sortedImages[1]?.url || "",
+                                      image3: sortedImages.find((i) => i.position === 2)?.url || sortedImages[2]?.url || "",
+                                      image4: sortedImages.find((i) => i.position === 3)?.url || sortedImages[3]?.url || "",
+                                      initialQuantity: p.inventory?.reduce((sum, inv) => sum + (inv.quantity || 0), 0) || 0,
+                                      warehouseId: warehouses[0]?.id || ""
                                     });
                                     setShowProductModal(true);
                                   }}
@@ -1187,6 +1320,103 @@ export default function AdminPortal() {
                             </tr>
                           );
                         })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VENDORS TAB */}
+          {activeTab === "vendors" && (
+            <div>
+              <div className="admin-card">
+                <div className="admin-card-header">
+                  <div>
+                    <h3 className="admin-card-title">Registered Marketplace Vendors ({vendors.length})</h3>
+                    <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: "13px" }}>
+                      Manage independent vendors, marketplace partners, onboarding status, and catalog allocations.
+                    </p>
+                  </div>
+                  <div className="admin-card-tools">
+                    <input
+                      className="admin-search-input"
+                      placeholder="Search vendor name, email..."
+                      value={vendorSearch}
+                      onChange={(e) => setVendorSearch(e.target.value)}
+                    />
+                    <button
+                      className="admin-btn-primary"
+                      onClick={() => {
+                        setVendorForm({ name: "", email: "", phone: "", isActive: true });
+                        setShowVendorModal(true);
+                      }}
+                    >
+                      <Plus size={14} /> Register Vendor
+                    </button>
+                  </div>
+                </div>
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Vendor Name</th>
+                        <th>Business Email</th>
+                        <th>Phone</th>
+                        <th>Catalog Items</th>
+                        <th>Fulfillment Network</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vendors.filter((v) =>
+                        !vendorSearch.trim() ||
+                        v.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
+                        (v.email && v.email.toLowerCase().includes(vendorSearch.toLowerCase()))
+                      ).length === 0 ? (
+                        <tr><td colSpan={7} className="admin-empty">No marketplace vendors found.</td></tr>
+                      ) : (
+                        vendors
+                          .filter((v) =>
+                            !vendorSearch.trim() ||
+                            v.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
+                            (v.email && v.email.toLowerCase().includes(vendorSearch.toLowerCase()))
+                          )
+                          .map((v) => (
+                            <tr key={v.id}>
+                              <td>
+                                <strong>{v.name}</strong>
+                                <div style={{ fontSize: "11px", color: "#64748b" }}>ID: <code>{v.id.slice(0, 8)}...</code></div>
+                              </td>
+                              <td>{v.email || <span style={{ color: "#94a3b8" }}>No email</span>}</td>
+                              <td>{v.phone || <span style={{ color: "#94a3b8" }}>No phone</span>}</td>
+                              <td>
+                                <span className="admin-badge badge-info">
+                                  {v._count?.products ?? 0} products
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{ fontSize: "12px", color: "#475569" }}>
+                                  Global Distribution
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`admin-badge ${v.isActive ? "badge-delivered" : "badge-cancelled"}`}>
+                                  {v.isActive ? "ACTIVE" : "INACTIVE"}
+                                </span>
+                              </td>
+                              <td>
+                                <button
+                                  className="admin-btn-secondary admin-btn-sm"
+                                  onClick={() => void handleToggleVendorStatus(v.id, v.isActive)}
+                                >
+                                  {v.isActive ? "Deactivate" : "Activate"}
+                                </button>
+                              </td>
+                            </tr>
+                          ))
                       )}
                     </tbody>
                   </table>
@@ -1741,66 +1971,134 @@ export default function AdminPortal() {
                     </tbody>
                   </table>
 
-                  {/* Shipments section */}
+                  {/* Shipments & Delivery Tracking Stepper */}
                   <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "16px", marginBottom: "16px" }}>
-                    <h4 style={{ margin: "0 0 10px", color: "#64748b", fontSize: "11px", textTransform: "uppercase" }}>Fulfillment & Shipments</h4>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                      <h4 style={{ margin: 0, color: "#64748b", fontSize: "11px", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Truck size={14} /> End-to-End Fulfillment & Delivery Tracking
+                      </h4>
+                      {selectedOrder.shipments?.[0] && (
+                        <span className={`admin-badge badge-${selectedOrder.shipments[0].status.toLowerCase()}`}>
+                          Live Stage: {selectedOrder.shipments[0].status.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </div>
+
                     {selectedOrder.shipments && selectedOrder.shipments.length > 0 ? (
-                      selectedOrder.shipments.map((shp) => (
-                        <div key={shp.id} style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", marginBottom: "8px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <strong>{shp.carrier}</strong> - Tracking: <code>{shp.trackingNumber || "None"}</code>
-                              <div style={{ marginTop: "4px" }}>
-                                <span className={`admin-badge badge-${shp.status.toLowerCase()}`}>{shp.status}</span>
+                      selectedOrder.shipments.map((shp) => {
+                        const stages = [
+                          { key: "PREPARING", label: "Preparing in Warehouse", next: "DISPATCHED", nextLabel: "Mark Dispatched" },
+                          { key: "DISPATCHED", label: "Dispatched to Carrier", next: "IN_TRANSIT", nextLabel: "In Transit" },
+                          { key: "IN_TRANSIT", label: "In Transit Between Hubs", next: "OUT_FOR_DELIVERY", nextLabel: "Out for Delivery" },
+                          { key: "OUT_FOR_DELIVERY", label: "Out for Final Delivery", next: "DELIVERED", nextLabel: "Confirm Delivered" },
+                          { key: "DELIVERED", label: "Delivered to Customer", next: null, nextLabel: null }
+                        ];
+                        const currentIdx = stages.findIndex((s) => s.key === shp.status);
+                        const currentStageObj = stages[currentIdx] || null;
+
+                        return (
+                          <div key={shp.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "16px", borderRadius: "8px", marginBottom: "12px" }}>
+                            {/* Metadata Header */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
+                              <div>
+                                <strong>Carrier:</strong> {shp.carrier || "Standard Courier"} &nbsp;|&nbsp;
+                                <strong>Tracking #:</strong> <code>{shp.trackingNumber || "Pending generation"}</code>
+                              </div>
+                              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                {currentStageObj?.next && (
+                                  <button
+                                    type="button"
+                                    className="admin-btn-primary admin-btn-sm"
+                                    onClick={() => void handleProgressShipment(shp.id, currentStageObj.next!)}
+                                  >
+                                    <CheckCircle size={14} /> Advance: {currentStageObj.nextLabel}
+                                  </button>
+                                )}
+                                {shp.status === "DELIVERED" && (
+                                  <span style={{ fontSize: "12px", color: "#166534", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                                    <CheckCircle size={14} /> Completed & Confirmed
+                                  </span>
+                                )}
                               </div>
                             </div>
-                            <div>
-                              {shp.status === "PREPARING" && (
-                                <button className="admin-btn-primary admin-btn-sm" onClick={() => void handleProgressShipment(shp.id, "DISPATCHED")}>
-                                  Mark Dispatched
-                                </button>
-                              )}
-                              {shp.status === "DISPATCHED" && (
-                                <button className="admin-btn-primary admin-btn-sm" onClick={() => void handleProgressShipment(shp.id, "IN_TRANSIT")}>
-                                  In Transit
-                                </button>
-                              )}
-                              {shp.status === "IN_TRANSIT" && (
-                                <button className="admin-btn-primary admin-btn-sm" onClick={() => void handleProgressShipment(shp.id, "OUT_FOR_DELIVERY")}>
-                                  Out For Delivery
-                                </button>
-                              )}
-                              {shp.status === "OUT_FOR_DELIVERY" && (
-                                <button className="admin-btn-primary admin-btn-sm" onClick={() => void handleProgressShipment(shp.id, "DELIVERED")}>
-                                  Delivered
-                                </button>
-                              )}
+
+                            {/* Visual Progress Stepper */}
+                            <div className="delivery-stepper-container" style={{ margin: "16px 0 8px" }}>
+                              <div className="delivery-stepper" style={{ display: "flex", justifyContent: "space-between", position: "relative" }}>
+                                {stages.map((stage, sIdx) => {
+                                  const isPast = currentIdx > sIdx;
+                                  const isCurrent = currentIdx === sIdx;
+                                  return (
+                                    <div
+                                      key={stage.key}
+                                      style={{
+                                        flex: 1,
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        alignItems: "center",
+                                        textAlign: "center",
+                                        position: "relative"
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          width: "30px",
+                                          height: "30px",
+                                          borderRadius: "50%",
+                                          background: isPast ? "#10b981" : isCurrent ? "#2563eb" : "#e2e8f0",
+                                          color: isPast || isCurrent ? "#ffffff" : "#64748b",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          fontWeight: 700,
+                                          fontSize: "12px",
+                                          boxShadow: isCurrent ? "0 0 0 4px rgba(37, 99, 235, 0.2)" : "none",
+                                          transition: "all 0.2s"
+                                        }}
+                                      >
+                                        {isPast ? "✓" : sIdx + 1}
+                                      </div>
+                                      <span
+                                        style={{
+                                          fontSize: "11px",
+                                          marginTop: "6px",
+                                          fontWeight: isCurrent ? 700 : 500,
+                                          color: isCurrent ? "#1e293b" : isPast ? "#047857" : "#94a3b8"
+                                        }}
+                                      >
+                                        {stage.label}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     ) : (
                       <div>
                         {["CONFIRMED", "PROCESSING"].includes(selectedOrder.status) ? (
-                          <form onSubmit={handleCreateShipment} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <form onSubmit={handleCreateShipment} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", background: "#f8fafc", padding: "12px", borderRadius: "6px" }}>
                             <select
                               className="admin-select"
                               value={shipmentCarrier}
                               onChange={(e) => setShipmentCarrier(e.target.value)}
                             >
-                              <option value="FedEx">FedEx</option>
-                              <option value="UPS">UPS</option>
-                              <option value="DHL">DHL</option>
-                              <option value="USPS">USPS</option>
+                              <option value="FedEx">FedEx Express</option>
+                              <option value="UPS">UPS Worldwide</option>
+                              <option value="DHL">DHL Global</option>
+                              <option value="USPS">USPS Priority</option>
                             </select>
                             <input
                               className="admin-search-input"
-                              placeholder="Tracking Number (optional)"
+                              placeholder="Carrier Tracking # (e.g. TRK-99214)"
                               value={shipmentTracking}
                               onChange={(e) => setShipmentTracking(e.target.value)}
+                              style={{ flex: 1, minWidth: "180px" }}
                             />
                             <button type="submit" className="admin-btn-primary" disabled={shipmentBusy}>
-                              <Truck size={14} /> Dispatch Shipment
+                              <Truck size={14} /> Dispatch & Initialize Tracking
                             </button>
                           </form>
                         ) : (
@@ -1925,25 +2223,165 @@ export default function AdminPortal() {
                     </select>
                   </div>
                 </div>
+
                 <div className="admin-form-group">
-                  <label>Product Image URL (Optional)</label>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash.com/..."
-                    value={productForm.imageUrl}
-                    onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })}
-                  />
-                  {productForm.imageUrl && (
-                    <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "11px", color: "#64748b" }}>Live preview:</span>
-                      <ProductImg
-                        src={productForm.imageUrl}
-                        alt="Product preview"
-                        style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f8fafc" }}
-                        fallbackName={productForm.name || "Preview"}
+                  <label>Vendor Partner / Seller</label>
+                  <select
+                    value={productForm.vendorId}
+                    onChange={(e) => setProductForm({ ...productForm, vendorId: e.target.value })}
+                  >
+                    <option value="">GlobalCart Direct (In-House)</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} {!v.isActive ? "(Inactive)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {!editingProduct && (
+                  <div className="admin-form-row">
+                    <div className="admin-form-group">
+                      <label>Initial Stock Quantity</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100000"
+                        value={productForm.initialQuantity}
+                        onChange={(e) => setProductForm({ ...productForm, initialQuantity: parseInt(e.target.value, 10) || 0 })}
                       />
                     </div>
-                  )}
+                    <div className="admin-form-group">
+                      <label>Stocking Warehouse</label>
+                      <select
+                        value={productForm.warehouseId}
+                        onChange={(e) => setProductForm({ ...productForm, warehouseId: e.target.value })}
+                      >
+                        <option value="">Select Warehouse (Optional)</option>
+                        {warehouses.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({w.code} - {w.city}, {w.countryCode})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4-Angle Photography Studio Section */}
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", background: "#f8fafc", margin: "16px 0" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Camera size={16} /> 4-Angle Photography Studio
+                      </h4>
+                      <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                        Provide 4 distinct photographic angles (Front, Side, Lifestyle, Detail Macro).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="admin-btn-secondary admin-btn-sm"
+                      onClick={() => {
+                        setProductForm({
+                          ...productForm,
+                          imageUrl: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=800&q=80",
+                          image1: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=800&q=80",
+                          image2: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80",
+                          image3: "https://images.unsplash.com/photo-1565849904461-04a58ad377e0?auto=format&fit=crop&w=800&q=80",
+                          image4: "https://images.unsplash.com/photo-1580910051074-3eb694886505?auto=format&fit=crop&w=800&q=80"
+                        });
+                      }}
+                    >
+                      Fill Sample Studio Photos
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "12px" }}>
+                    {/* Angle 1 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 1: Front / Hero View *
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Front View)"
+                        value={productForm.image1}
+                        onChange={(e) => setProductForm({ ...productForm, image1: e.target.value, imageUrl: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
+                      />
+                      <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image1 ? (
+                          <ProductImg src={productForm.image1} alt="Front Hero" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 1"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>No image set</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Angle 2 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 2: Side Profile View
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Side Profile)"
+                        value={productForm.image2}
+                        onChange={(e) => setProductForm({ ...productForm, image2: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
+                      />
+                      <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image2 ? (
+                          <ProductImg src={productForm.image2} alt="Side Profile" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 2"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>No image set</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Angle 3 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 3: Lifestyle / In-Context
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Lifestyle Setup)"
+                        value={productForm.image3}
+                        onChange={(e) => setProductForm({ ...productForm, image3: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
+                      />
+                      <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image3 ? (
+                          <ProductImg src={productForm.image3} alt="Lifestyle" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 3"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>No image set</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Angle 4 */}
+                    <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
+                        Angle 4: Detail / Macro View
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Detail Close-up)"
+                        value={productForm.image4}
+                        onChange={(e) => setProductForm({ ...productForm, image4: e.target.value })}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
+                      />
+                      <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {productForm.image4 ? (
+                          <ProductImg src={productForm.image4} alt="Detail Macro" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 4"} />
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>No image set</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="admin-modal-footer">
@@ -1951,7 +2389,72 @@ export default function AdminPortal() {
                   Cancel
                 </button>
                 <button type="submit" className="admin-btn-primary">
-                  {editingProduct ? "Save Changes" : "Create Product"}
+                  {editingProduct ? "Save Changes" : "Create Product with 4 Angles"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* REGISTER VENDOR MODAL */}
+      {showVendorModal && (
+        <div className="admin-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowVendorModal(false); }}>
+          <div className="admin-modal" style={{ maxWidth: "520px" }}>
+            <div className="admin-modal-header">
+              <h2>Register New Marketplace Vendor</h2>
+              <button className="admin-btn-secondary admin-btn-sm" onClick={() => setShowVendorModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveVendor}>
+              <div className="admin-modal-body">
+                <div className="admin-form-group">
+                  <label>Vendor / Company Name *</label>
+                  <input
+                    required
+                    placeholder="e.g. Apex Audio Tech"
+                    value={vendorForm.name}
+                    onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="admin-form-group">
+                  <label>Business Email *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="vendor@company.com"
+                    value={vendorForm.email}
+                    onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })}
+                  />
+                </div>
+                <div className="admin-form-group">
+                  <label>Contact Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="+1 (555) 123-4567"
+                    value={vendorForm.phone}
+                    onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="admin-form-group" style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px" }}>
+                  <input
+                    type="checkbox"
+                    id="adminVendorActive"
+                    checked={vendorForm.isActive}
+                    onChange={(e) => setVendorForm({ ...vendorForm, isActive: e.target.checked })}
+                  />
+                  <label htmlFor="adminVendorActive" style={{ margin: 0, cursor: "pointer", fontSize: "13px" }}>
+                    Active and authorized to sell on GlobalCart marketplace
+                  </label>
+                </div>
+              </div>
+              <div className="admin-modal-footer">
+                <button type="button" className="admin-btn-secondary" onClick={() => setShowVendorModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="admin-btn-primary">
+                  Register Vendor
                 </button>
               </div>
             </form>
