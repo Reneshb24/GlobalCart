@@ -75,7 +75,7 @@ Shoppers earn points on purchases, unlocking tiered rewards (`BRONZE` → `SILVE
 
 ## 🔑 Test Accounts & Team Mate Credentials
 
-Your team mates can test all 3 portals immediately using these credentials:
+You can test all 3 portals immediately using these credentials:
 
 | Experience | Portal Link | Username / Email | Password | Capabilities |
 | :--- | :--- | :--- | :--- | :--- |
