@@ -1,0 +1,155 @@
+
+.address-book-dialog {
+  width: min(100%, 620px);
+}
+
+.address-book-content {
+  padding-bottom: 28px;
+}
+
+.address-book-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 43px;
+  margin-bottom: 18px;
+  border: 1px dashed #9bc9ad;
+  border-radius: 11px;
+  background: #f3faf5;
+  color: #176a42;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.address-book-add:disabled,
+.address-book-text-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.address-book-status {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.address-book-list {
+  display: grid;
+  gap: 12px;
+}
+
+.address-book-card {
+  padding: 16px;
+  border: 1px solid #e5eae6;
+  border-radius: 13px;
+  background: #fff;
+  color: #56615a;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.address-book-card p {
+  margin: 3px 0;
+}
+
+.address-book-card-heading,
+.address-book-card-heading > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.address-book-card-heading strong {
+  color: #1e3528;
+  font-size: 14px;
+}
+
+.address-book-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 3px 7px;
+  border-radius: 20px;
+  background: #eaf8ef;
+  color: #176a42;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.address-book-recipient {
+  margin-top: 10px !important;
+  color: #26382d;
+  font-weight: 750;
+}
+
+.address-book-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid #edf0ee;
+}
+
+.address-book-text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: #176a42;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.address-book-delete {
+  color: #b42318;
+}
+
+.address-book-form {
+  margin-top: 12px;
+}
+
+.address-book-default-check {
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: #f3faf5;
+}
+
+.address-book-default-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #16824b;
+}
+
+.address-book-form-actions {
+  display: grid;
+  gap: 9px;
+}
+
+.address-book-empty {
+  padding: 20px 10px;
+}
+
+@media (max-width: 480px) {
+  .address-book-card {
+    padding: 13px;
+  }
+
+  .address-book-actions {
+    gap: 10px;
+  }
+}
