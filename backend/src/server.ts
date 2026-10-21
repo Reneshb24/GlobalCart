@@ -40,7 +40,12 @@ const allowedOrigins =
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (
+      !origin ||
+      allowedOrigins.includes("*") ||
+      allowedOrigins.includes(origin) ||
+      allowedOrigins.some((o) => origin.endsWith(o.replace(/^\*/, "")))
+    ) {
       callback(null, true);
       return;
     }
