@@ -823,3 +823,179 @@
     font-size: 10px;
   }
 }
+
+/* Announcement Bar Portals Switcher */
+.announcement {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 6px max(7.8%, calc((100vw - 1180px)/2)) !important;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.announcement-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.announcement-portals {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.announcement-portal-tag {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+}
+.announcement-portal-pill {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #f8f7ed;
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+.announcement-portal-pill:hover {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+.announcement-portal-pill.active {
+  background: var(--orange, #e07a4b);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* Header Portal Group */
+.header-portal-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.header-portal-btn.portal-user-active {
+  box-shadow: 0 0 0 2px #10b981;
+}
+
+/* Footer Portals Directory */
+.site-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.footer-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.footer-portals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.footer-portals-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #2b3d30;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.footer-portals-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.footer-portal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #556658;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.15s ease;
+}
+.footer-portal-link:hover, .footer-portal-link.active {
+  color: var(--green, #214b3a);
+  font-weight: 700;
+}
+
+/* Floating Quick Portal Switcher Dock */
+.portal-floating-dock {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 30px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  color: #f8fafc;
+  font-size: 11px;
+}
+.dock-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  margin-right: 2px;
+}
+.dock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+.dock-store {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+.dock-store.active {
+  background: #10b981;
+  color: #ffffff;
+  font-weight: 700;
+}
+.dock-admin {
+  background: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+.dock-admin:hover {
+  background: #334155;
+  color: #ffffff;
+}
+.dock-vendor {
+  background: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+.dock-vendor:hover {
+  background: #d97706;
+  color: #ffffff;
+}
+
+@media (max-width: 600px) {
+  .portal-floating-dock {
+    bottom: 12px;
+    left: 12px;
+    padding: 5px 8px;
+    gap: 4px;
+  }
+  .dock-pill {
+    padding: 3px 7px;
+    font-size: 10px;
+  }
+}

@@ -591,10 +591,16 @@ function App() {
   return (
     <div className="storefront">
       <div className="announcement">
-        <Sparkles size={14} />
-        <span>Thoughtful finds. Everyday essentials.</span>
-        <span className="announcement-divider">Â·</span>
-        <span>Welcome to GlobalCart</span>
+        <div className="announcement-left">
+          <Sparkles size={14} />
+          <span>Thoughtful finds. Everyday essentials.</span>
+        </div>
+        <div className="announcement-portals">
+          <span className="announcement-portal-tag">PORTALS:</span>
+          <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="announcement-portal-pill active">Storefront</a>
+          <a href="/admin" className="announcement-portal-pill">Admin</a>
+          <a href="/vendor" className="announcement-portal-pill">Vendor</a>
+        </div>
       </div>
 
       <header className="site-header">
@@ -643,18 +649,16 @@ function App() {
               <ShoppingBag size={21} /><span>Cart</span>
               {(cartData?.itemCount ?? 0) > 0 && <b className="action-count">{cartData?.itemCount}</b>}
             </button>
-            {accountUser?.role === "ADMIN" && (
-              <a href="/admin" className="header-action header-portal-btn admin-portal-btn" title="Open Admin Control Panel">
-                <ShieldCheck size={20} />
-                <span>Admin Panel</span>
+            <div className="header-portal-group" aria-label="Portal Navigation">
+              <a href="/admin" className={`header-portal-btn admin-portal-btn ${accountUser?.role === "ADMIN" ? "portal-user-active" : ""}`} title="Access Admin Control Panel">
+                <ShieldCheck size={16} />
+                <span>Admin</span>
               </a>
-            )}
-            {accountUser?.role === "VENDOR" && (
-              <a href="/vendor" className="header-action header-portal-btn vendor-portal-btn" title="Open Vendor Portal">
-                <Store size={20} />
-                <span>Vendor Portal</span>
+              <a href="/vendor" className={`header-portal-btn vendor-portal-btn ${accountUser?.role === "VENDOR" ? "portal-user-active" : ""}`} title="Access Vendor Portal">
+                <Store size={16} />
+                <span>Vendor</span>
               </a>
-            )}
+            </div>
           </div>
         </div>
 
@@ -876,13 +880,45 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        <a className="brand footer-brand" href="#" onClick={(event) => { event.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
-          <span className="brand-mark"><ShoppingBag size={19} /></span>
-          <span>global<span className="brand-accent">cart</span><small>SHOP THE EVERYDAY</small></span>
-        </a>
-        <p>Everyday finds. One thoughtful cart.</p>
-        <span className="footer-copy">Â© {new Date().getFullYear()} GlobalCart Â· Demo storefront</span>
+        <div className="footer-lead">
+          <a className="brand footer-brand" href="#" onClick={(event) => { event.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <span className="brand-mark"><ShoppingBag size={19} /></span>
+            <span>global<span className="brand-accent">cart</span><small>SHOP THE EVERYDAY</small></span>
+          </a>
+          <p>Everyday finds. One thoughtful cart.</p>
+        </div>
+
+        <div className="footer-portals">
+          <span className="footer-portals-title">Platform Portals</span>
+          <div className="footer-portals-nav">
+            <a href="/" className="footer-portal-link active">
+              <ShoppingBag size={13} /> Customer Storefront
+            </a>
+            <a href="/admin" className="footer-portal-link">
+              <ShieldCheck size={13} /> Admin Control Panel
+            </a>
+            <a href="/vendor" className="footer-portal-link">
+              <Store size={13} /> Vendor Partner Portal
+            </a>
+          </div>
+        </div>
+
+        <span className="footer-copy">© {new Date().getFullYear()} GlobalCart · Demo storefront</span>
       </footer>
+
+      {/* Floating Quick Portal Dock */}
+      <aside className="portal-floating-dock" aria-label="Portal Quick Access">
+        <span className="dock-label">PORTALS:</span>
+        <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="dock-pill dock-store active" title="Customer Storefront">
+          <ShoppingBag size={13} /> Store
+        </a>
+        <a href="/admin" className="dock-pill dock-admin" title="Admin Control Panel">
+          <ShieldCheck size={13} /> Admin
+        </a>
+        <a href="/vendor" className="dock-pill dock-vendor" title="Vendor Partner Portal">
+          <Store size={13} /> Vendor
+        </a>
+      </aside>
       <button className="mobile-search-fab" aria-label="Search products" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}><Search size={20} /></button>
 
       {(cartOpen || wishlistOpen) && (
