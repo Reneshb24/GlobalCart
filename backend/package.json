@@ -6,9 +6,9 @@
   "scripts": {
     "test": "tsx --test tests/*.test.ts",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "buildarn": "tsc",
-    "start": "node dist/server.js"
+    "build": "prisma generate && tsc && node -e \"require('fs').cpSync('src/generated', 'dist/generated', {recursive: true})\"",
+    "buildarn": "npm run build",
+    "start": "node -e \"if (!require('fs').existsSync('dist/generated') && require('fs').existsSync('src/generated')) require('fs').cpSync('src/generated', 'dist/generated', {recursive: true})\" && node dist/server.js"
   },
   "keywords": [],
   "author": "",
