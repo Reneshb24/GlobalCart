@@ -78,8 +78,9 @@ export async function checkout(userId: string, input: CheckoutInput) {
 
       if (input.offerCode) {
         const now = new Date();
+        const normalizedCode = input.offerCode.trim().toUpperCase();
         const offer = await tx.offer.findUnique({
-          where: { code: input.offerCode }
+          where: { code: normalizedCode }
         });
 
         if (
@@ -91,7 +92,7 @@ export async function checkout(userId: string, input: CheckoutInput) {
           throw new OrderError("Offer code is invalid or unavailable", 400);
         }
 
-        if (offer.currency !== currency) {
+        if (offer.currency && currency && offer.currency.toUpperCase() !== currency.toUpperCase()) {
           throw new OrderError("Offer currency does not match the cart", 400);
         }
 

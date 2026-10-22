@@ -1,4 +1,4 @@
-﻿
+
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 
@@ -256,6 +256,77 @@ async function main() {
     });
 
     inventoryCount++;
+  }
+
+  // 6. Seed default sitewide coupons & offers
+  const now = new Date();
+  const startsAt = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const endsAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+
+  const defaultOffers = [
+    {
+      code: "SAVE20",
+      name: "20% Off Everything",
+      description: "Get an instant 20% discount on your entire order.",
+      discountPercent: 20.0,
+      discountAmount: null,
+      currency: "USD",
+      startsAt,
+      endsAt,
+      status: "ACTIVE" as const
+    },
+    {
+      code: "WELCOME10",
+      name: "Welcome 10% Off",
+      description: "New customer welcome discount of 10% off any order.",
+      discountPercent: 10.0,
+      discountAmount: null,
+      currency: "USD",
+      startsAt,
+      endsAt,
+      status: "ACTIVE" as const
+    },
+    {
+      code: "FLAT50",
+      name: "$50 Flat Instant Savings",
+      description: "Enjoy a flat $50 discount applied at checkout.",
+      discountPercent: null,
+      discountAmount: 50.0,
+      currency: "USD",
+      startsAt,
+      endsAt,
+      status: "ACTIVE" as const
+    },
+    {
+      code: "FESTIVE25",
+      name: "25% Festive Season Special",
+      description: "Celebrate with 25% off all eligible items.",
+      discountPercent: 25.0,
+      discountAmount: null,
+      currency: "USD",
+      startsAt,
+      endsAt,
+      status: "ACTIVE" as const
+    },
+    {
+      code: "SUPER15",
+      name: "$15 Super Savings Voucher",
+      description: "Instant $15 off on your cart total.",
+      discountPercent: null,
+      discountAmount: 15.0,
+      currency: "USD",
+      startsAt,
+      endsAt,
+      status: "ACTIVE" as const
+    }
+  ];
+
+  for (const offer of defaultOffers) {
+    await prisma.offer.upsert({
+      where: { code: offer.code },
+      update: offer,
+      create: offer
+    });
   }
 
   console.log("GlobalCart development seed completed.");

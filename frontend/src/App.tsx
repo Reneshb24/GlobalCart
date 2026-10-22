@@ -1016,6 +1016,23 @@ function App() {
                   <span>Subtotal</span>
                   <strong>{cartData.currency ? formatPrice(cartData.total, cartData.currency) : "Mixed currencies"}</strong>
                 </div>
+                <div style={{
+                  margin: "12px 0 8px",
+                  padding: "10px 12px",
+                  background: "#f0fdf4",
+                  border: "1px dashed #86efac",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  color: "#166534"
+                }}>
+                  <Sparkles size={16} color="#16a34a" style={{ flexShrink: 0 }} />
+                  <span>
+                    <strong>Coupons & Rewards:</strong> Apply code <strong>SAVE20</strong> (20% off) or redeem SuperCoins at checkout!
+                  </span>
+                </div>
                 {cartData.hasMixedCurrencies && <p className="auth-error">Your cart contains different currencies. Checkout is unavailable until they are separated.</p>}
                 <p className="auth-privacy">Taxes, shipping, offers, and final availability are calculated by the backend during checkout.</p>
               </div>

@@ -42,11 +42,42 @@ type LoyaltyTransaction = {
 type Offer = {
   id: string;
   code: string;
-  title: string;
+  name: string;
   description?: string | null;
-  discountType: string;
-  discountValue: string | number;
-  minimumSpend?: string | number | null;
+  discountPercent?: string | number | null;
+  discountAmount?: string | number | null;
+  currency: string;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  productId?: string | null;
+  categoryId?: string | null;
+  product?: { id: string; name: string; slug: string } | null;
+  category?: { id: string; name: string; slug: string } | null;
+};
+
+type CartItem = {
+  id: string;
+  productId: string;
+  quantity: number;
+  subtotal: string | number;
+  product: {
+    id: string;
+    name: string;
+    slug: string;
+    price: string | number;
+    currency: string;
+    categoryId?: string | null;
+  };
+};
+
+type Cart = {
+  id: string;
+  items: CartItem[];
+  itemCount: number;
+  total: string | number;
+  currency: string | null;
+  hasMixedCurrencies: boolean;
 };
 
 type OrderItem = {
@@ -190,6 +221,77 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
   const [availableOffers, setAvailableOffers] = useState<Offer[]>([]);
   const [redeemLoyaltyPoints, setRedeemLoyaltyPoints] = useState(false);
 
+  // Cart & Coupon validation state (Amazon & Flipkart model)
+  const [cart, setCart] = useState<Cart | null>(null);
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedOffer, setAppliedOffer] = useState<Offer | null>(null);
+  const [couponApplying, setCouponApplying] = useState(false);
+  const [couponError, setCouponError] = useState("");
+  const [couponSuccess, setCouponSuccess] = useState("");
+
+  function getOfferBadgeText(offer: Offer): string {
+    if (offer.discountPercent !== null && offer.discountPercent !== undefined) {
+      return `${Number(offer.discountPercent)}% OFF`;
+    }
+    if (offer.discountAmount !== null && offer.discountAmount !== undefined) {
+      return `$${Number(offer.discountAmount).toFixed(2)} OFF`;
+    }
+    return "Special Offer";
+  }
+
+  async function handleApplyCoupon(codeToApply?: string) {
+    const raw = codeToApply ?? couponInput;
+    const code = raw.trim().toUpperCase();
+    if (!code) return;
+
+    setCouponApplying(true);
+    setCouponError("");
+    setCouponSuccess("");
+
+    try {
+      const res = await api.get<{ offer: Offer }>(`/offers/${code}`);
+      const offer = res.data.offer;
+
+      // Validate targeted item if cart is loaded
+      if (cart?.items && offer.productId) {
+        const hasProduct = cart.items.some((i) => i.productId === offer.productId);
+        if (!hasProduct) {
+          setCouponError(`This coupon is only valid for "${offer.product?.name || "a specific item"}".`);
+          setCouponApplying(false);
+          return;
+        }
+      }
+
+      if (cart?.items && offer.categoryId) {
+        const hasCategory = cart.items.some((i) => i.product.categoryId === offer.categoryId);
+        if (!hasCategory) {
+          setCouponError(`This coupon is only valid for "${offer.category?.name || "a specific category"}".`);
+          setCouponApplying(false);
+          return;
+        }
+      }
+
+      setAppliedOffer(offer);
+      setOfferCode(code);
+      setCouponInput(code);
+      setCouponSuccess(`Coupon "${code}" applied! (${getOfferBadgeText(offer)})`);
+    } catch (err) {
+      setAppliedOffer(null);
+      setOfferCode("");
+      setCouponError(getApiErrorMessage(err, "Invalid, expired, or unavailable coupon code."));
+    } finally {
+      setCouponApplying(false);
+    }
+  }
+
+  function handleRemoveCoupon() {
+    setAppliedOffer(null);
+    setOfferCode("");
+    setCouponInput("");
+    setCouponSuccess("");
+    setCouponError("");
+  }
+
   // Orders tab state
   const [ordersTab, setOrdersTab] = useState<"orders" | "returns" | "loyalty">("orders");
   const [returns, setReturns] = useState<ReturnRequest[]>([]);
@@ -215,14 +317,16 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
       setSuccessNotice("");
       try {
         if (mode === "checkout") {
-          const [addrRes, offersRes, loyaltyRes] = await Promise.all([
+          const [addrRes, cartRes, offersRes, loyaltyRes] = await Promise.all([
             api.get<{ addresses: Address[] }>("/addresses"),
+            api.get<{ cart: Cart }>("/cart").catch(() => ({ data: { cart: null } })),
             api.get<{ offers: Offer[] }>("/offers").catch(() => ({ data: { offers: [] } })),
             api.get<{ account: LoyaltyAccount }>("/loyalty").catch(() => ({ data: { account: null } })),
           ]);
           if (!active) return;
           const saved = addrRes.data.addresses ?? [];
           setAddresses(saved);
+          setCart(cartRes.data?.cart ?? null);
           setAvailableOffers(offersRes.data.offers ?? []);
           if (loyaltyRes.data?.account) {
             setLoyaltyAccount(loyaltyRes.data.account);
@@ -366,10 +470,12 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
           countryCode: address.countryCode.trim().toUpperCase(),
         };
 
+    const codeToSubmit = (appliedOffer ? appliedOffer.code : offerCode).trim().toUpperCase();
+
     try {
       const response = await api.post<CheckoutResult>("/checkout", {
         paymentMethod,
-        ...(offerCode.trim() ? { offerCode: offerCode.trim().toUpperCase() } : {}),
+        ...(codeToSubmit ? { offerCode: codeToSubmit } : {}),
         redeemLoyaltyPoints,
         shippingAddress,
       });
@@ -408,6 +514,42 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
       setBusy(false);
     }
   }
+
+  const cartSubtotal = Number(cart?.total || 0);
+  const cartCurrency = cart?.currency || "USD";
+
+  // Coupon discount calculation
+  let couponDiscountAmount = 0;
+  if (appliedOffer && cartSubtotal > 0) {
+    if (appliedOffer.discountPercent != null) {
+      const pct = Number(appliedOffer.discountPercent);
+      let eligible = cartSubtotal;
+      if (cart?.items && (appliedOffer.productId || appliedOffer.categoryId)) {
+        eligible = cart.items
+          .filter(
+            (i) =>
+              (!appliedOffer.productId || i.productId === appliedOffer.productId) &&
+              (!appliedOffer.categoryId || i.product.categoryId === appliedOffer.categoryId)
+          )
+          .reduce((sum, i) => sum + Number(i.subtotal), 0);
+      }
+      couponDiscountAmount = Math.min(cartSubtotal, Math.round(eligible * pct) / 100);
+    } else if (appliedOffer.discountAmount != null) {
+      couponDiscountAmount = Math.min(cartSubtotal, Number(appliedOffer.discountAmount));
+    }
+  }
+
+  // SuperCoins discount (100 pts = $1.00)
+  const remainingAfterCoupon = Math.max(0, cartSubtotal - couponDiscountAmount);
+  const maxLoyaltyDiscount = (loyaltyAccount?.pointsBalance ?? 0) / 100;
+  const loyaltyDiscountAmount = redeemLoyaltyPoints
+    ? Math.min(remainingAfterCoupon, maxLoyaltyDiscount)
+    : 0;
+  const loyaltyPointsUsed = Math.floor(loyaltyDiscountAmount * 100);
+
+  // Final total & savings
+  const finalPayableTotal = Math.max(0, cartSubtotal - couponDiscountAmount - loyaltyDiscountAmount);
+  const totalSavings = couponDiscountAmount + loyaltyDiscountAmount;
 
   return (
     <div className="auth-backdrop" onMouseDown={(event) => {
@@ -1143,6 +1285,146 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                   </label>
                 </fieldset>
 
+                {/* Amazon & Flipkart Coupon & Promotional Discounts Card */}
+                <div style={{
+                  margin: "16px 0",
+                  padding: "16px",
+                  background: "#f8fafc",
+                  border: "1.5px solid #e2e8f0",
+                  borderRadius: "10px"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                    <strong style={{ fontSize: "13px", color: "#1e293b", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Tag size={16} color="#059669" />
+                      Coupons & Promotional Discounts
+                    </strong>
+                    {appliedOffer && (
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#15803d", background: "#dcfce7", padding: "2px 8px", borderRadius: "12px" }}>
+                        ✓ Coupon Applied
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      type="text"
+                      placeholder="Enter coupon code (e.g. SAVE20)"
+                      value={couponInput}
+                      onChange={(e) => {
+                        setCouponInput(e.target.value.toUpperCase());
+                        if (couponError) setCouponError("");
+                      }}
+                      disabled={couponApplying || !!appliedOffer}
+                      style={{
+                        flex: 1,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        fontWeight: 600,
+                        padding: "8px 12px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "6px",
+                        background: appliedOffer ? "#f1f5f9" : "#ffffff"
+                      }}
+                    />
+                    {appliedOffer ? (
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        style={{
+                          padding: "8px 14px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          borderRadius: "6px",
+                          background: "#fee2e2",
+                          color: "#b91c1c",
+                          border: "1px solid #fca5a5",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void handleApplyCoupon()}
+                        disabled={!couponInput.trim() || couponApplying}
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          borderRadius: "6px",
+                          background: !couponInput.trim() || couponApplying ? "#94a3b8" : "#15803d",
+                          color: "#ffffff",
+                          border: "none",
+                          cursor: !couponInput.trim() || couponApplying ? "not-allowed" : "pointer",
+                          transition: "background 0.15s ease"
+                        }}
+                      >
+                        {couponApplying ? "Applying…" : "Apply"}
+                      </button>
+                    )}
+                  </div>
+
+                  {couponSuccess && (
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "#15803d", fontWeight: 600, display: "flex", alignItems: "center", gap: "5px" }}>
+                      <CheckCircle2 size={14} /> {couponSuccess}
+                    </div>
+                  )}
+
+                  {couponError && (
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "#dc2626", fontWeight: 500, display: "flex", alignItems: "center", gap: "5px" }}>
+                      <X size={14} /> {couponError}
+                    </div>
+                  )}
+
+                  {availableOffers.length > 0 && (
+                    <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #cbd5e1" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "8px" }}>
+                        Available Marketplace Coupons (Click to 1-Click Apply):
+                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                        {availableOffers.map((offer) => {
+                          const isApplied = appliedOffer?.code === offer.code;
+                          return (
+                            <button
+                              key={offer.id}
+                              type="button"
+                              onClick={() => {
+                                if (isApplied) {
+                                  handleRemoveCoupon();
+                                } else {
+                                  void handleApplyCoupon(offer.code);
+                                }
+                              }}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                padding: "6px 10px",
+                                fontSize: "12px",
+                                borderRadius: "6px",
+                                border: isApplied ? "1.5px solid #15803d" : "1px solid #cbd5e1",
+                                background: isApplied ? "#dcfce7" : "#ffffff",
+                                color: isApplied ? "#15803d" : "#1e293b",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              <Percent size={12} color={isApplied ? "#15803d" : "#059669"} />
+                              <strong style={{ letterSpacing: "0.04em" }}>{offer.code}</strong>
+                              <span style={{ fontSize: "11px", color: isApplied ? "#15803d" : "#64748b", fontWeight: 500 }}>
+                                ({getOfferBadgeText(offer)})
+                              </span>
+                              {isApplied && <span style={{ fontWeight: 800 }}>✓</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {loyaltyAccount && loyaltyAccount.pointsBalance > 0 && (
                   <div style={{
                     marginBottom: "16px",
@@ -1165,7 +1447,7 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
                         <strong style={{ color: "#14532d", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
                           <Sparkles size={16} color="#15803d" />
-                          Redeem GlobalCart SuperCoins ({loyaltyAccount.pointsBalance} pts)
+                          Redeem GlobalCart SuperCoins ({loyaltyAccount.pointsBalance} pts available)
                         </strong>
                         <span style={{
                           fontSize: "11px",
@@ -1185,55 +1467,98 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                   </div>
                 )}
 
-                {availableOffers.length > 0 && (
-                  <div style={{ marginBottom: "12px", padding: "12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
-                      <Tag size={14} color="#059669" /> Available Coupons & Discounts (Click to apply):
+                {/* Amazon & Flipkart Real-Time Order Summary Breakdown */}
+                {cartSubtotal > 0 && (
+                  <div style={{
+                    margin: "16px 0 14px",
+                    padding: "16px",
+                    borderRadius: "10px",
+                    background: "#f8fafc",
+                    border: "1.5px solid #e2e8f0"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                      <strong style={{ fontSize: "14px", color: "#0f172a" }}>Order Summary</strong>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>{cart?.itemCount ?? 0} item(s)</span>
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                      {availableOffers.map((offer) => (
-                        <button
-                          key={offer.id}
-                          type="button"
-                          onClick={() => setOfferCode(offer.code)}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            padding: "6px 10px",
-                            fontSize: "12px",
-                            borderRadius: "6px",
-                            border: offerCode === offer.code ? "1.5px solid #16a34a" : "1px solid #cbd5e1",
-                            background: offerCode === offer.code ? "#dcfce7" : "#ffffff",
-                            color: offerCode === offer.code ? "#15803d" : "#1e293b",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          <Percent size={12} />
-                          <span>{offer.code}</span>
-                          <span style={{ fontSize: "10px", color: offerCode === offer.code ? "#15803d" : "#64748b", fontWeight: 500 }}>
-                            ({offer.discountType === "PERCENTAGE" ? `${Number(offer.discountValue)}% OFF` : `$${Number(offer.discountValue)} OFF`})
-                          </span>
-                          {offerCode === offer.code && <span>✓</span>}
-                        </button>
-                      ))}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#475569", marginBottom: "6px" }}>
+                      <span>Items Subtotal</span>
+                      <span>{money(cartSubtotal, cartCurrency)}</span>
                     </div>
+
+                    {appliedOffer && couponDiscountAmount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#15803d", fontWeight: 600, marginBottom: "6px" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                          <Tag size={13} /> Coupon Discount ({appliedOffer.code})
+                        </span>
+                        <span>-{money(couponDiscountAmount, cartCurrency)}</span>
+                      </div>
+                    )}
+
+                    {redeemLoyaltyPoints && loyaltyDiscountAmount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#15803d", fontWeight: 600, marginBottom: "6px" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                          <Sparkles size={13} /> SuperCoins ({loyaltyPointsUsed} pts)
+                        </span>
+                        <span>-{money(loyaltyDiscountAmount, cartCurrency)}</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#475569", marginBottom: "6px" }}>
+                      <span>Delivery / Shipping</span>
+                      <span style={{ color: "#15803d", fontWeight: 600 }}>FREE</span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#475569", marginBottom: "10px" }}>
+                      <span>Estimated Taxes</span>
+                      <span>$0.00</span>
+                    </div>
+
+                    <div style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      paddingTop: "10px",
+                      borderTop: "1.5px dashed #cbd5e1",
+                      fontSize: "16px",
+                      fontWeight: 800,
+                      color: "#0f172a"
+                    }}>
+                      <span>Total Payable</span>
+                      <span style={{ fontSize: "18px", color: "#0f172a" }}>
+                        {money(finalPayableTotal, cartCurrency)}
+                      </span>
+                    </div>
+
+                    {totalSavings > 0 && (
+                      <div style={{
+                        marginTop: "12px",
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        background: "#dcfce7",
+                        border: "1px solid #bbf7d0",
+                        color: "#15803d",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        textAlign: "center"
+                      }}>
+                        🎉 Amazon & Flipkart Savings: You are saving {money(totalSavings, cartCurrency)} on this order!
+                      </div>
+                    )}
                   </div>
                 )}
 
-                <label className="commerce-field commerce-field-full">Offer code (optional)
-                  <input value={offerCode} maxLength={40} pattern="[A-Za-z0-9_-]{3,40}"
-                    placeholder="Enter offer code" onChange={(event) => setOfferCode(event.target.value.toUpperCase())} />
-                </label>
                 <p className="auth-privacy">The backend recalculates prices, discounts, and stock at checkout. Taxes and shipping are determined by current server rules.</p>
                 <div className="shop-dialog-footer commerce-actions">
                   <button className="secondary-button" type="button" onClick={onClose} disabled={busy}>
                     <ArrowLeft size={15} /> Back to cart
                   </button>
                   <button className="primary-button commerce-submit" type="submit" disabled={busy}>
-                    {busy ? "Placing order…" : "Place order"}
+                    {busy
+                      ? "Placing order…"
+                      : cartSubtotal > 0
+                      ? `Place order — ${money(finalPayableTotal, cartCurrency)}`
+                      : "Place order"}
                   </button>
                 </div>
               </form>
