@@ -15,7 +15,7 @@ type ProductDetails = {
   currency: string;
   availableStock: number;
   category?: { name: string; slug: string } | null;
-  vendor?: { name: string } | null;
+  vendor?: { id?: string; name: string } | null;
   images?: { url: string; altText?: string | null; position?: number }[];
 };
 
@@ -238,16 +238,28 @@ export default function ProductDetailsDialog({
                   {product.description || "A thoughtful pick for everyday living."}
                 </p>
 
-                {product.vendor?.name && (
-                  <p className="product-detail-meta"><strong>Sold by</strong> {product.vendor.name}</p>
-                )}
+                {/* Amazon / Flipkart Seller & Fulfilled Box */}
+                <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", margin: "14px 0", border: "1px solid #e2e8f0" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "12px", color: "#64748b" }}>Seller Details:</span>
+                    <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: 700 }}>
+                      ✓ Fulfilled by GlobalCart
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>
+                    {product.vendor?.name || "GlobalCart Direct (In-House Retail)"}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                    Dispatched from GlobalCart Certified Fulfillment Network · 100% Quality Assured
+                  </div>
+                </div>
 
                 <p className={`product-detail-stock ${product.availableStock <= 0 ? "out" : ""}`}>
                   {product.availableStock <= 0
                     ? "Currently out of stock"
                     : product.availableStock <= 5
-                      ? `Only ${product.availableStock} left in stock`
-                      : "In stock"}
+                      ? `⚠ Only ${product.availableStock} left in stock - order soon`
+                      : `✓ In Stock (${product.availableStock} units ready to ship)`}
                 </p>
 
                 {product.availableStock > 0 && (

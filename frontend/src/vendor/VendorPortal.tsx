@@ -304,9 +304,11 @@ export default function VendorPortal() {
           categoryId: productForm.categoryId,
           status: productForm.status,
           imageUrl: primaryUrl,
-          images: images.length > 0 ? images : undefined
+          images: images.length > 0 ? images : undefined,
+          initialQuantity: Number(productForm.initialQuantity) || 0,
+          warehouseId: productForm.warehouseId || undefined
         });
-        setFeedback({ type: "success", text: "Product updated successfully." });
+        setFeedback({ type: "success", text: "Product updated successfully with inventory stock." });
       } else {
         await api.post("/vendor/products", {
           sku: productForm.sku,
@@ -684,7 +686,7 @@ export default function VendorPortal() {
                                       image3: sortedImages.find((i) => i.position === 2)?.url || sortedImages[2]?.url || "",
                                       image4: sortedImages.find((i) => i.position === 3)?.url || sortedImages[3]?.url || "",
                                       initialQuantity: p.inventory?.reduce((sum, inv) => sum + (inv.quantity || 0), 0) || 0,
-                                      warehouseId: warehouses[0]?.id || ""
+                                      warehouseId: (p.inventory?.[0] as any)?.warehouseId || (p.inventory?.[0] as any)?.warehouse?.id || warehouses[0]?.id || ""
                                     });
                                     setShowProductModal(true);
                                   }}
@@ -999,40 +1001,110 @@ export default function VendorPortal() {
                   </div>
                 </div>
 
-                {!editingProduct && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                {/* Warehouse Stock & Quantity Counter Field */}
+                <div style={{ background: "#fafaf9", border: "1px solid #e7e5e4", borderRadius: "8px", padding: "16px", marginBottom: "16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
                     <div>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                        Initial Stock Quantity
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#1c1917", margin: 0 }}>
+                        Fulfillment Stock & Quantity Counter *
                       </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100000"
-                        style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
-                        value={productForm.initialQuantity}
-                        onChange={(e) => setProductForm({ ...productForm, initialQuantity: parseInt(e.target.value, 10) || 0 })}
-                      />
+                      <span style={{ fontSize: "11px", color: "#78716c" }}>
+                        Specify available physical units in your chosen nearest warehouse
+                      </span>
                     </div>
+                    {productForm.initialQuantity > 5 ? (
+                      <span style={{ background: "#dcfce7", color: "#166534", padding: "3px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
+                        ✓ In Stock ({productForm.initialQuantity} units)
+                      </span>
+                    ) : productForm.initialQuantity > 0 ? (
+                      <span style={{ background: "#fef3c7", color: "#92400e", padding: "3px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
+                        ⚠ Low Stock ({productForm.initialQuantity} remaining)
+                      </span>
+                    ) : (
+                      <span style={{ background: "#fee2e2", color: "#991b1b", padding: "3px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
+                        ✕ Out of Stock (0 units)
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", alignItems: "flex-end" }}>
+                    {/* Stepper Counter */}
                     <div>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                      <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "#44403c", fontWeight: 700, marginBottom: "4px" }}>
+                        Units Available Counter
+                      </label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <button
+                          type="button"
+                          className="vendor-btn-secondary"
+                          style={{ width: "36px", height: "36px", fontSize: "18px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                          onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: Math.max(0, (prev.initialQuantity || 0) - 1) }))}
+                          disabled={(productForm.initialQuantity || 0) <= 0}
+                          title="Decrease by 1"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100000"
+                          value={productForm.initialQuantity}
+                          onChange={(e) => setProductForm((prev) => ({ ...prev, initialQuantity: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                          style={{ width: "75px", textAlign: "center", height: "36px", fontWeight: 700, fontSize: "15px", borderRadius: "6px", border: "1px solid #d6d3d1", boxSizing: "border-box" }}
+                        />
+                        <button
+                          type="button"
+                          className="vendor-btn-secondary"
+                          style={{ width: "36px", height: "36px", fontSize: "18px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                          onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: (prev.initialQuantity || 0) + 1 }))}
+                          title="Increase by 1"
+                        >
+                          +
+                        </button>
+
+                        <div style={{ display: "flex", gap: "4px", marginLeft: "4px" }}>
+                          <button
+                            type="button"
+                            className="vendor-btn-secondary vendor-btn-sm"
+                            style={{ fontSize: "11px", padding: "4px 8px" }}
+                            onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: (prev.initialQuantity || 0) + 10 }))}
+                            title="Add 10 units"
+                          >
+                            +10
+                          </button>
+                          <button
+                            type="button"
+                            className="vendor-btn-secondary vendor-btn-sm"
+                            style={{ fontSize: "11px", padding: "4px 8px" }}
+                            onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: (prev.initialQuantity || 0) + 50 }))}
+                            title="Add 50 units"
+                          >
+                            +50
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Nearest Stocking Warehouse */}
+                    <div>
+                      <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "#44403c", fontWeight: 700, marginBottom: "4px" }}>
                         Nearest Fulfillment Warehouse
                       </label>
                       <select
-                        style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
+                        style={{ width: "100%", height: "36px", boxSizing: "border-box", padding: "6px 10px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
                         value={productForm.warehouseId}
-                        onChange={(e) => setProductForm({ ...productForm, warehouseId: e.target.value })}
+                        onChange={(e) => setProductForm((prev) => ({ ...prev, warehouseId: e.target.value }))}
                       >
                         <option value="">Select Nearest Warehouse</option>
                         {warehouses.map((w) => (
                           <option key={w.id} value={w.id}>
-                            {w.name} ({w.code} - {w.city}, {w.countryCode})
+                            {w.name} ({w.code} – {w.city}, {w.countryCode})
                           </option>
                         ))}
                       </select>
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* 4-Angle Photography Studio */}
                 <div style={{ border: "1px solid #e7e5e4", borderRadius: "8px", padding: "16px", background: "#fafaf9", margin: "16px 0" }}>

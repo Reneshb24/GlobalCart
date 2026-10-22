@@ -46,7 +46,9 @@ const productUpdateSchema = z.object({
     altText: z.string().max(200).optional(),
     position: z.number().int().min(0).max(10).optional()
   })).optional(),
-  imageUrls: z.array(z.string().url().max(2000).or(z.literal(""))).optional()
+  imageUrls: z.array(z.string().url().max(2000).or(z.literal(""))).optional(),
+  initialQuantity: z.number().int().min(0).max(1000000).optional(),
+  warehouseId: z.string().uuid().nullable().optional()
 }).refine(val => Object.keys(val).length > 0, {
   message: "Provide at least one field to update"
 });
@@ -423,9 +425,40 @@ vendorRouter.patch("/products/:productId", async (req, res) => {
         images: {
           select: { id: true, url: true, altText: true, position: true },
           orderBy: { position: "asc" }
+        },
+        inventory: {
+          include: {
+            warehouse: { select: { id: true, code: true, name: true, isActive: true } }
+          }
         }
       }
     });
+
+    // If initialQuantity is provided with warehouseId, update/create inventory record in that warehouse
+    if (input.initialQuantity !== undefined && input.warehouseId) {
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id: input.warehouseId }
+      });
+      if (warehouse && warehouse.isActive) {
+        await prisma.inventory.upsert({
+          where: {
+            productId_warehouseId: {
+              productId,
+              warehouseId: input.warehouseId
+            }
+          },
+          update: {
+            quantity: input.initialQuantity
+          },
+          create: {
+            productId,
+            warehouseId: input.warehouseId,
+            quantity: input.initialQuantity,
+            reserved: 0
+          }
+        });
+      }
+    }
 
     res.json({
       product: {

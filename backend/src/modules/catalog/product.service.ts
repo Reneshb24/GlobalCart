@@ -1,4 +1,4 @@
-﻿import { Prisma } from "../../generated/prisma/client";
+import { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../../lib/prisma";
 
 export interface ProductListFilters {
@@ -72,12 +72,18 @@ export async function listProducts(filters: ProductListFilters) {
             slug: true
           }
         },
+        vendor: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
         images: {
           orderBy: { position: "asc" },
-          take: 1,
           select: {
             url: true,
-            altText: true
+            altText: true,
+            position: true
           }
         },
         inventory: {

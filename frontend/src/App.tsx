@@ -32,6 +32,7 @@ type Product = {
   price: string | number;
   currency: string;
   category?: { name: string; slug: string } | null;
+  vendor?: { id?: string; name: string } | null;
   images?: { url: string; altText?: string | null }[];
   availableStock: number;
 };
@@ -844,9 +845,39 @@ function App() {
                     {product.availableStock > 0 && product.availableStock <= 5 && <span className="low-stock">Only {product.availableStock} left</span>}
                   </div>
                   <div className="product-details">
-                    <span className="product-brand">{product.brand || "GLOBALCART SELECT"}</span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                      <span className="product-brand">{product.brand || "GLOBALCART SELECT"}</span>
+                      {product.images && product.images.length > 1 && (
+                        <span style={{ fontSize: "10px", background: "#f1f5f9", color: "#475569", padding: "2px 6px", borderRadius: "10px", fontWeight: 600 }}>
+                          {product.images.length} views
+                        </span>
+                      )}
+                    </div>
                     <h3>{product.name}</h3>
+
+                    {/* Amazon / Flipkart Seller & Fulfilled by GlobalCart */}
+                    <div style={{ margin: "2px 0 6px", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <span style={{ color: "#64748b" }}>
+                        Sold by <strong style={{ color: "#1e293b" }}>{product.vendor?.name || "GlobalCart Direct"}</strong>
+                      </span>
+                      <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "1px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 700 }}>
+                        ✓ Fulfilled
+                      </span>
+                    </div>
+
                     <p className="product-description">{product.description || "A thoughtful pick for everyday living."}</p>
+
+                    {/* Stock Urgency indicator */}
+                    <div style={{ margin: "4px 0 8px" }}>
+                      {product.availableStock > 5 ? (
+                        <span style={{ color: "#166534", fontSize: "11px", fontWeight: 600 }}>In Stock</span>
+                      ) : product.availableStock > 0 ? (
+                        <span style={{ color: "#b45309", fontSize: "11px", fontWeight: 700 }}>Only {product.availableStock} left in stock - order soon</span>
+                      ) : (
+                        <span style={{ color: "#dc2626", fontSize: "11px", fontWeight: 600 }}>Out of Stock</span>
+                      )}
+                    </div>
+
                     <div className="product-bottom">
                       <div><span className="price-label">PRICE</span><strong className="product-price">{formatPrice(product.price, product.currency)}</strong></div>
                       <button className="product-detail-open" type="button"

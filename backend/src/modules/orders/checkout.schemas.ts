@@ -1,8 +1,10 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 export const checkoutSchema = z.object({
   paymentMethod: z.enum(["SIMULATED_CARD", "COD"]),
   offerCode: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/).transform(value => value.toUpperCase()).optional(),
+  redeemLoyaltyPoints: z.boolean().optional(),
+  loyaltyPointsToRedeem: z.number().int().min(0).optional(),
   shippingAddress: z.object({
     recipient: z.string().trim().min(2).max(100),
     phone: z.string().trim().max(30).optional(),

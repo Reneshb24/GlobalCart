@@ -660,9 +660,11 @@ export default function AdminPortal() {
           vendorId: productForm.vendorId || null,
           status: productForm.status,
           imageUrl: primaryUrl,
-          images: images.length > 0 ? images : undefined
+          images: images.length > 0 ? images : undefined,
+          initialQuantity: Number(productForm.initialQuantity) || 0,
+          warehouseId: productForm.warehouseId || undefined
         });
-        setFeedback({ type: "success", text: "Product updated successfully." });
+        setFeedback({ type: "success", text: "Product updated successfully with inventory stock." });
       } else {
         await api.post("/admin/products", {
           sku: productForm.sku,
@@ -1309,7 +1311,7 @@ export default function AdminPortal() {
                                       image3: sortedImages.find((i) => i.position === 2)?.url || sortedImages[2]?.url || "",
                                       image4: sortedImages.find((i) => i.position === 3)?.url || sortedImages[3]?.url || "",
                                       initialQuantity: p.inventory?.reduce((sum, inv) => sum + (inv.quantity || 0), 0) || 0,
-                                      warehouseId: warehouses[0]?.id || ""
+                                      warehouseId: (p.inventory?.[0] as any)?.warehouseId || (p.inventory?.[0] as any)?.warehouse?.id || warehouses[0]?.id || ""
                                     });
                                     setShowProductModal(true);
                                   }}
@@ -2239,34 +2241,110 @@ export default function AdminPortal() {
                   </select>
                 </div>
 
-                {!editingProduct && (
-                  <div className="admin-form-row">
-                    <div className="admin-form-group">
-                      <label>Initial Stock Quantity</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100000"
-                        value={productForm.initialQuantity}
-                        onChange={(e) => setProductForm({ ...productForm, initialQuantity: parseInt(e.target.value, 10) || 0 })}
-                      />
+                {/* Warehouse Stock & Quantity Counter Field */}
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", marginBottom: "16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#1e293b", margin: 0 }}>
+                        Fulfillment Stock & Quantity Counter *
+                      </label>
+                      <span style={{ fontSize: "11px", color: "#64748b" }}>
+                        Specify available physical units in the designated warehouse
+                      </span>
                     </div>
-                    <div className="admin-form-group">
-                      <label>Stocking Warehouse</label>
+                    {productForm.initialQuantity > 5 ? (
+                      <span style={{ background: "#dcfce7", color: "#166534", padding: "3px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
+                        ✓ In Stock ({productForm.initialQuantity} units)
+                      </span>
+                    ) : productForm.initialQuantity > 0 ? (
+                      <span style={{ background: "#fef3c7", color: "#92400e", padding: "3px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
+                        ⚠ Low Stock ({productForm.initialQuantity} remaining)
+                      </span>
+                    ) : (
+                      <span style={{ background: "#fee2e2", color: "#991b1b", padding: "3px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
+                        ✕ Out of Stock (0 units)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="admin-form-row" style={{ alignItems: "flex-end", marginBottom: "6px" }}>
+                    {/* Stepper Counter */}
+                    <div className="admin-form-group" style={{ flex: "0 0 250px", margin: 0 }}>
+                      <label style={{ fontSize: "11px", textTransform: "uppercase", color: "#475569", fontWeight: 700 }}>
+                        Units Available Counter
+                      </label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <button
+                          type="button"
+                          className="admin-btn-secondary"
+                          style={{ width: "36px", height: "36px", fontSize: "18px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                          onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: Math.max(0, (prev.initialQuantity || 0) - 1) }))}
+                          disabled={(productForm.initialQuantity || 0) <= 0}
+                          title="Decrease by 1"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100000"
+                          value={productForm.initialQuantity}
+                          onChange={(e) => setProductForm((prev) => ({ ...prev, initialQuantity: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                          style={{ width: "75px", textAlign: "center", height: "36px", fontWeight: 700, fontSize: "15px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                        />
+                        <button
+                          type="button"
+                          className="admin-btn-secondary"
+                          style={{ width: "36px", height: "36px", fontSize: "18px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                          onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: (prev.initialQuantity || 0) + 1 }))}
+                          title="Increase by 1"
+                        >
+                          +
+                        </button>
+
+                        <div style={{ display: "flex", gap: "4px", marginLeft: "4px" }}>
+                          <button
+                            type="button"
+                            className="admin-btn-secondary admin-btn-sm"
+                            style={{ fontSize: "11px", padding: "4px 8px" }}
+                            onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: (prev.initialQuantity || 0) + 10 }))}
+                            title="Add 10 units"
+                          >
+                            +10
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-btn-secondary admin-btn-sm"
+                            style={{ fontSize: "11px", padding: "4px 8px" }}
+                            onClick={() => setProductForm((prev) => ({ ...prev, initialQuantity: (prev.initialQuantity || 0) + 50 }))}
+                            title="Add 50 units"
+                          >
+                            +50
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stocking Warehouse Selector */}
+                    <div className="admin-form-group" style={{ flex: 1, margin: 0 }}>
+                      <label style={{ fontSize: "11px", textTransform: "uppercase", color: "#475569", fontWeight: 700 }}>
+                        Fulfillment Center / Warehouse
+                      </label>
                       <select
                         value={productForm.warehouseId}
-                        onChange={(e) => setProductForm({ ...productForm, warehouseId: e.target.value })}
+                        onChange={(e) => setProductForm((prev) => ({ ...prev, warehouseId: e.target.value }))}
+                        style={{ height: "36px" }}
                       >
-                        <option value="">Select Warehouse (Optional)</option>
+                        <option value="">Select Fulfillment Warehouse</option>
                         {warehouses.map((w) => (
                           <option key={w.id} value={w.id}>
-                            {w.name} ({w.code} - {w.city}, {w.countryCode})
+                            {w.name} ({w.code} – {w.city}, {w.countryCode})
                           </option>
                         ))}
                       </select>
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* 4-Angle Photography Studio Section */}
                 <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", background: "#f8fafc", margin: "16px 0" }}>

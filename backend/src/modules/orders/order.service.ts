@@ -144,13 +144,44 @@ export async function checkout(userId: string, input: CheckoutInput) {
         discount = Prisma.Decimal.min(discount, subtotal);
       }
 
+      // Loyalty points redemption (Flipkart SuperCoins / Amazon Rewards style)
+      let loyaltyPointsRedeemed = 0;
+      let loyaltyDiscount = new Prisma.Decimal(0);
+
+      let loyaltyAccount = await tx.loyaltyAccount.findUnique({
+        where: { userId }
+      });
+
+      if (!loyaltyAccount) {
+        loyaltyAccount = await tx.loyaltyAccount.create({
+          data: { userId, pointsBalance: 0, tier: "STANDARD" }
+        });
+      }
+
+      if (input.redeemLoyaltyPoints && loyaltyAccount.pointsBalance > 0) {
+        const remainingToCover = subtotal.sub(discount);
+        if (remainingToCover.gt(0)) {
+          const maxPointsNeeded = Math.ceil(Number(remainingToCover) * 100);
+          const maxAvailable = input.loyaltyPointsToRedeem !== undefined
+            ? Math.min(loyaltyAccount.pointsBalance, input.loyaltyPointsToRedeem)
+            : loyaltyAccount.pointsBalance;
+
+          loyaltyPointsRedeemed = Math.min(maxAvailable, maxPointsNeeded);
+          if (loyaltyPointsRedeemed > 0) {
+            loyaltyDiscount = new Prisma.Decimal(loyaltyPointsRedeemed).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+            loyaltyDiscount = Prisma.Decimal.min(loyaltyDiscount, remainingToCover);
+            discount = discount.add(loyaltyDiscount);
+          }
+        }
+      }
+
       const total = Prisma.Decimal.max(
         new Prisma.Decimal(0),
         subtotal.add(tax).add(shippingCost).sub(discount)
       );
 
       // Only the simulated card flow is treated as captured.
-// COD remains pending until payment is collected.
+      // COD remains pending until payment is collected.
       const paymentCaptured = input.paymentMethod === "SIMULATED_CARD";
 
       const order = await tx.order.create({
@@ -256,6 +287,51 @@ export async function checkout(userId: string, input: CheckoutInput) {
         where: { cartId: cart.id }
       });
 
+      // Update Loyalty Account for redemption if applied
+      if (loyaltyPointsRedeemed > 0 && loyaltyAccount) {
+        await tx.loyaltyAccount.update({
+          where: { id: loyaltyAccount.id },
+          data: {
+            pointsBalance: { decrement: loyaltyPointsRedeemed }
+          }
+        });
+        await tx.loyaltyTransaction.create({
+          data: {
+            userId,
+            accountId: loyaltyAccount.id,
+            type: "REDEEMED",
+            points: -loyaltyPointsRedeemed,
+            description: `Redeemed ${loyaltyPointsRedeemed} points on Order #${order.orderNumber}`,
+            orderId: order.id
+          }
+        });
+      }
+
+      // Award Loyalty Points for order placed (5 points per $1 spent, minimum 10 points)
+      const pointsEarned = Math.max(10, Math.floor(Number(total) * 5));
+      if (pointsEarned > 0 && loyaltyAccount) {
+        const netPoints = (loyaltyAccount.pointsBalance - loyaltyPointsRedeemed) + pointsEarned;
+        const newTier = netPoints >= 5000 ? "PLATINUM" : netPoints >= 2000 ? "GOLD" : netPoints >= 500 ? "SILVER" : "STANDARD";
+
+        await tx.loyaltyAccount.update({
+          where: { id: loyaltyAccount.id },
+          data: {
+            pointsBalance: { increment: pointsEarned },
+            tier: newTier
+          }
+        });
+        await tx.loyaltyTransaction.create({
+          data: {
+            userId,
+            accountId: loyaltyAccount.id,
+            type: "EARNED",
+            points: pointsEarned,
+            description: `Earned ${pointsEarned} points from Order #${order.orderNumber}`,
+            orderId: order.id
+          }
+        });
+      }
+
       return {
         message: "Checkout completed",
         order: {
@@ -285,6 +361,11 @@ export async function checkout(userId: string, input: CheckoutInput) {
           amount: payment.amount.toFixed(2),
           currency: payment.currency,
           simulated: payment.simulated
+        },
+        loyalty: {
+          pointsRedeemed: loyaltyPointsRedeemed,
+          discountAmount: loyaltyDiscount.toFixed(2),
+          pointsEarned
         }
       };
     });

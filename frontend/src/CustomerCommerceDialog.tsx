@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowLeft, CheckCircle2, ClipboardList, MapPin, X,
-  Truck, RotateCcw
+  Truck, RotateCcw, Sparkles, Tag, Percent, Award
 } from "lucide-react";
 import { api, getApiErrorMessage } from "./lib/api";
 import ProductImg from "./ProductImg";
@@ -22,6 +22,32 @@ type Address = {
 };
 
 type AddressForm = Omit<Address, "id" | "isDefault"> & { label: string };
+
+type LoyaltyAccount = {
+  id: string;
+  pointsBalance: number;
+  tier: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type LoyaltyTransaction = {
+  id: string;
+  type: string;
+  points: number;
+  reason?: string | null;
+  createdAt: string;
+};
+
+type Offer = {
+  id: string;
+  code: string;
+  title: string;
+  description?: string | null;
+  discountType: string;
+  discountValue: string | number;
+  minimumSpend?: string | number | null;
+};
 
 type OrderItem = {
   id?: string;
@@ -110,6 +136,11 @@ type CheckoutResult = {
     currency: string;
     simulated: boolean;
   };
+  loyalty?: {
+    pointsRedeemed: number;
+    discountAmount: number;
+    pointsEarned: number;
+  };
 };
 
 type Props = {
@@ -153,8 +184,14 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
   const [successNotice, setSuccessNotice] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Loyalty and Offers state
+  const [loyaltyAccount, setLoyaltyAccount] = useState<LoyaltyAccount | null>(null);
+  const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
+  const [availableOffers, setAvailableOffers] = useState<Offer[]>([]);
+  const [redeemLoyaltyPoints, setRedeemLoyaltyPoints] = useState(false);
+
   // Orders tab state
-  const [ordersTab, setOrdersTab] = useState<"orders" | "returns">("orders");
+  const [ordersTab, setOrdersTab] = useState<"orders" | "returns" | "loyalty">("orders");
   const [returns, setReturns] = useState<ReturnRequest[]>([]);
   const [returnsLoading, setReturnsLoading] = useState(false);
   const [expandedTracking, setExpandedTracking] = useState<Record<string, Shipment[]>>({});
@@ -178,20 +215,33 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
       setSuccessNotice("");
       try {
         if (mode === "checkout") {
-          const response = await api.get<{ addresses: Address[] }>("/addresses");
+          const [addrRes, offersRes, loyaltyRes] = await Promise.all([
+            api.get<{ addresses: Address[] }>("/addresses"),
+            api.get<{ offers: Offer[] }>("/offers").catch(() => ({ data: { offers: [] } })),
+            api.get<{ account: LoyaltyAccount }>("/loyalty").catch(() => ({ data: { account: null } })),
+          ]);
           if (!active) return;
-          const saved = response.data.addresses ?? [];
+          const saved = addrRes.data.addresses ?? [];
           setAddresses(saved);
+          setAvailableOffers(offersRes.data.offers ?? []);
+          if (loyaltyRes.data?.account) {
+            setLoyaltyAccount(loyaltyRes.data.account);
+          }
           const preferred = saved.find((item) => item.isDefault) ?? saved[0];
           if (preferred) setSelectedAddressId(preferred.id);
         } else {
-          const [ordersRes, returnsRes] = await Promise.all([
+          const [ordersRes, returnsRes, loyaltyRes] = await Promise.all([
             api.get<{ orders: Order[] }>("/orders"),
             api.get<{ returns: ReturnRequest[] }>("/returns").catch(() => ({ data: { returns: [] } })),
+            api.get<{ account: LoyaltyAccount; transactions: LoyaltyTransaction[] }>("/loyalty").catch(() => ({ data: { account: null, transactions: [] } })),
           ]);
           if (!active) return;
           setOrders(ordersRes.data.orders ?? []);
           setReturns(returnsRes.data.returns ?? []);
+          if (loyaltyRes.data?.account) {
+            setLoyaltyAccount(loyaltyRes.data.account);
+            setLoyaltyTransactions(loyaltyRes.data.transactions ?? []);
+          }
         }
       } catch (e) {
         if (active) setError(getApiErrorMessage(e, "Unable to load your information."));
@@ -320,6 +370,7 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
       const response = await api.post<CheckoutResult>("/checkout", {
         paymentMethod,
         ...(offerCode.trim() ? { offerCode: offerCode.trim().toUpperCase() } : {}),
+        redeemLoyaltyPoints,
         shippingAddress,
       });
       setResult(response.data);
@@ -381,6 +432,27 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
             <div className="commerce-summary-row"><span>Payment method</span><strong>{result.payment.method === "COD" ? "Cash on Delivery" : "Simulated card"}</strong></div>
             <div className="commerce-summary-row"><span>Payment status</span><strong>{result.payment.status}</strong></div>
             <div className="commerce-summary-row commerce-grand-total"><span>Total</span><strong>{money(result.order.total, result.order.currency)}</strong></div>
+            {result.loyalty && (
+              <div style={{
+                margin: "12px 0",
+                padding: "12px",
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: "8px",
+                textAlign: "left"
+              }}>
+                {result.loyalty.pointsEarned > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#15803d", fontWeight: 600, fontSize: "13px" }}>
+                    <Sparkles size={16} /> You earned +{result.loyalty.pointsEarned} SuperCoins on this purchase!
+                  </div>
+                )}
+                {result.loyalty.pointsRedeemed > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#047857", fontSize: "12px", marginTop: "4px" }}>
+                    <CheckCircle2 size={14} /> Redeemed {result.loyalty.pointsRedeemed} points (-${result.loyalty.discountAmount.toFixed(2)} instant discount)
+                  </div>
+                )}
+              </div>
+            )}
             <p className="auth-privacy">This is a demo checkout. No real card payment is processed.</p>
             {addressSaveWarning && (
               <p className="auth-error shop-notice" role="alert">{addressSaveWarning}</p>
@@ -414,6 +486,15 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                 }}
               >
                 Returns & Refunds ({returns.length})
+              </button>
+              <button
+                type="button"
+                className={ordersTab === "loyalty" ? "commerce-tab commerce-tab-active" : "commerce-tab"}
+                onClick={() => setOrdersTab("loyalty")}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+              >
+                <Sparkles size={14} color="#f59e0b" />
+                Rewards & SuperCoins ({loyaltyAccount?.pointsBalance ?? 0})
               </button>
             </div>
 
@@ -750,7 +831,7 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                   })}
                 </div>
               )
-            ) : (
+            ) : ordersTab === "returns" ? (
               /* Returns Tab */
               returnsLoading ? (
                 <p className="shop-loading">Loading your returns…</p>
@@ -816,6 +897,154 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                   ))}
                 </div>
               )
+            ) : (
+              /* Rewards & SuperCoins Tab */
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "4px 0" }}>
+                <div style={{
+                  background: "linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)",
+                  color: "#ffffff",
+                  padding: "20px",
+                  borderRadius: "12px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  boxShadow: "0 4px 14px rgba(6, 78, 59, 0.25)"
+                }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                      <span style={{
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        padding: "3px 10px",
+                        borderRadius: "20px",
+                        background: loyaltyAccount?.tier === "PLATINUM" ? "#a855f7" :
+                                    loyaltyAccount?.tier === "GOLD" ? "#fbbf24" :
+                                    loyaltyAccount?.tier === "SILVER" ? "#cbd5e1" : "#10b981",
+                        color: loyaltyAccount?.tier === "GOLD" ? "#78350f" :
+                               loyaltyAccount?.tier === "SILVER" ? "#0f172a" : "#ffffff",
+                      }}>
+                        {loyaltyAccount?.tier || "STANDARD"} MEMBER
+                      </span>
+                      <span style={{ fontSize: "12px", color: "#a7f3d0" }}>Amazon & Flipkart Loyalty Tier</span>
+                    </div>
+                    <div style={{ fontSize: "34px", fontWeight: 800, letterSpacing: "-0.02em", color: "#f8fafc" }}>
+                      {loyaltyAccount?.pointsBalance ?? 0}
+                      <span style={{ fontSize: "15px", fontWeight: 600, color: "#a7f3d0", marginLeft: "8px" }}>SuperCoins</span>
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#d1fae5", marginTop: "4px" }}>
+                      Worth <strong>${(((loyaltyAccount?.pointsBalance ?? 0) / 100)).toFixed(2)} USD</strong> instant deduction at checkout
+                    </div>
+                  </div>
+                  <div style={{
+                    background: "rgba(255,255,255,0.15)",
+                    borderRadius: "50%",
+                    width: "56px",
+                    height: "56px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}>
+                    <Sparkles size={32} color="#fbbf24" />
+                  </div>
+                </div>
+
+                {/* Loyalty Rules & Benefits */}
+                <div style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "10px",
+                  padding: "16px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "12px"
+                }}>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <div style={{ background: "#dcfce7", color: "#16a34a", padding: "8px", borderRadius: "8px", height: "fit-content" }}>
+                      <Percent size={18} />
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: "13px", color: "#0f172a", display: "block" }}>Earn 5% Back</strong>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>5 coins credited per $1 spent on GlobalCart orders.</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <div style={{ background: "#fef3c7", color: "#d97706", padding: "8px", borderRadius: "8px", height: "fit-content" }}>
+                      <Tag size={18} />
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: "13px", color: "#0f172a", display: "block" }}>100 Pts = $1.00</strong>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>Direct checkout discount with 1-click redemption.</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <div style={{ background: "#f3e8ff", color: "#9333ea", padding: "8px", borderRadius: "8px", height: "fit-content" }}>
+                      <Award size={18} />
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: "13px", color: "#0f172a", display: "block" }}>VIP Upgrades</strong>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>Unlock Silver, Gold, and Platinum multiplier privileges.</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Activity Table */}
+                <div>
+                  <h4 style={{ fontSize: "14px", fontWeight: 700, color: "#1e293b", margin: "8px 0 10px" }}>
+                    Recent Coins Activity
+                  </h4>
+                  {loyaltyTransactions.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "24px", background: "#f8fafc", borderRadius: "8px", color: "#64748b", fontSize: "13px" }}>
+                      No reward points transactions yet. Complete a checkout to earn your first SuperCoins!
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "260px", overflowY: "auto" }}>
+                      {loyaltyTransactions.map((tx) => (
+                        <div
+                          key={tx.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "10px 14px",
+                            background: "#ffffff",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "8px"
+                          }}
+                        >
+                          <div>
+                            <strong style={{ fontSize: "13px", color: "#1e293b", display: "block" }}>
+                              {tx.reason || (tx.type === "EARNED" ? "Order Purchase Reward" : "Checkout Points Redemption")}
+                            </strong>
+                            <span style={{ fontSize: "11px", color: "#64748b" }}>
+                              {new Date(tx.createdAt).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </span>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              padding: "4px 10px",
+                              borderRadius: "20px",
+                              background: tx.type === "EARNED" ? "#dcfce7" : "#fee2e2",
+                              color: tx.type === "EARNED" ? "#15803d" : "#b91c1c"
+                            }}
+                          >
+                            {tx.type === "EARNED" ? `+${tx.points} pts` : `-${tx.points} pts`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             <div className="shop-dialog-footer commerce-actions">
@@ -913,6 +1142,86 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                     <span><strong>Cash on Delivery</strong><small>Payment remains pending until collected.</small></span>
                   </label>
                 </fieldset>
+
+                {loyaltyAccount && loyaltyAccount.pointsBalance > 0 && (
+                  <div style={{
+                    marginBottom: "16px",
+                    padding: "14px",
+                    borderRadius: "8px",
+                    background: "#f0fdf4",
+                    border: "1.5px solid #86efac",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "12px"
+                  }}>
+                    <input
+                      type="checkbox"
+                      id="redeemLoyaltyCheckbox"
+                      checked={redeemLoyaltyPoints}
+                      onChange={(e) => setRedeemLoyaltyPoints(e.target.checked)}
+                      style={{ marginTop: "3px", width: "18px", height: "18px", accentColor: "#15803d", cursor: "pointer" }}
+                    />
+                    <label htmlFor="redeemLoyaltyCheckbox" style={{ cursor: "pointer", margin: 0, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                        <strong style={{ color: "#14532d", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Sparkles size={16} color="#15803d" />
+                          Redeem GlobalCart SuperCoins ({loyaltyAccount.pointsBalance} pts)
+                        </strong>
+                        <span style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          background: "#15803d",
+                          color: "#ffffff",
+                          padding: "2px 8px",
+                          borderRadius: "12px"
+                        }}>
+                          Save ${(loyaltyAccount.pointsBalance / 100).toFixed(2)}
+                        </span>
+                      </div>
+                      <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#166534", lineHeight: "1.4" }}>
+                        Amazon & Flipkart reward model: 100 points = $1.00 instant checkout deduction. Apply directly toward this order.
+                      </p>
+                    </label>
+                  </div>
+                )}
+
+                {availableOffers.length > 0 && (
+                  <div style={{ marginBottom: "12px", padding: "12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
+                      <Tag size={14} color="#059669" /> Available Coupons & Discounts (Click to apply):
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {availableOffers.map((offer) => (
+                        <button
+                          key={offer.id}
+                          type="button"
+                          onClick={() => setOfferCode(offer.code)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            padding: "6px 10px",
+                            fontSize: "12px",
+                            borderRadius: "6px",
+                            border: offerCode === offer.code ? "1.5px solid #16a34a" : "1px solid #cbd5e1",
+                            background: offerCode === offer.code ? "#dcfce7" : "#ffffff",
+                            color: offerCode === offer.code ? "#15803d" : "#1e293b",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <Percent size={12} />
+                          <span>{offer.code}</span>
+                          <span style={{ fontSize: "10px", color: offerCode === offer.code ? "#15803d" : "#64748b", fontWeight: 500 }}>
+                            ({offer.discountType === "PERCENTAGE" ? `${Number(offer.discountValue)}% OFF` : `$${Number(offer.discountValue)} OFF`})
+                          </span>
+                          {offerCode === offer.code && <span>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <label className="commerce-field commerce-field-full">Offer code (optional)
                   <input value={offerCode} maxLength={40} pattern="[A-Za-z0-9_-]{3,40}"

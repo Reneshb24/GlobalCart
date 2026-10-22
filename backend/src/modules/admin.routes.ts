@@ -181,6 +181,11 @@ adminRouter.post("/products", async (req, res) => {
         images: {
           select: { id: true, url: true, altText: true, position: true },
           orderBy: { position: "asc" }
+        },
+        inventory: {
+          include: {
+            warehouse: { select: { id: true, code: true, name: true, isActive: true } }
+          }
         }
       }
     });
@@ -303,9 +308,40 @@ adminRouter.patch("/products/:productId", async (req, res) => {
         images: {
           select: { id: true, url: true, altText: true, position: true },
           orderBy: { position: "asc" }
+        },
+        inventory: {
+          include: {
+            warehouse: { select: { id: true, code: true, name: true, isActive: true } }
+          }
         }
       }
     });
+
+    // If initialQuantity is provided with warehouseId, update or create inventory record
+    if (input.initialQuantity !== undefined && input.warehouseId) {
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id: input.warehouseId }
+      });
+      if (warehouse && warehouse.isActive) {
+        await prisma.inventory.upsert({
+          where: {
+            productId_warehouseId: {
+              productId: req.params.productId,
+              warehouseId: input.warehouseId
+            }
+          },
+          update: {
+            quantity: input.initialQuantity
+          },
+          create: {
+            productId: req.params.productId,
+            warehouseId: input.warehouseId,
+            quantity: input.initialQuantity,
+            reserved: 0
+          }
+        });
+      }
+    }
 
     res.json({ product });
   } catch (error) {
