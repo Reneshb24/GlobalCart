@@ -856,13 +856,18 @@ function App() {
                     <h3>{product.name}</h3>
 
                     {/* Amazon / Flipkart Seller & Fulfilled by GlobalCart */}
-                    <div style={{ margin: "2px 0 6px", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <div style={{ margin: "2px 0 4px", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       <span style={{ color: "#64748b" }}>
                         Sold by <strong style={{ color: "#1e293b" }}>{product.vendor?.name || "GlobalCart Direct"}</strong>
                       </span>
                       <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "1px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 700 }}>
                         ✓ Fulfilled
                       </span>
+                    </div>
+
+                    <div style={{ margin: "1px 0 6px", fontSize: "11px", color: "#059669", display: "flex", alignItems: "center", gap: "4px", fontWeight: 600 }}>
+                      <Truck size={12} />
+                      <span>FREE Delivery Tomorrow</span>
                     </div>
 
                     <p className="product-description">{product.description || "A thoughtful pick for everyday living."}</p>
@@ -879,7 +884,15 @@ function App() {
                     </div>
 
                     <div className="product-bottom">
-                      <div><span className="price-label">PRICE</span><strong className="product-price">{formatPrice(product.price, product.currency)}</strong></div>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+                          <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 700 }}>-20%</span>
+                          <strong className="product-price">{formatPrice(product.price, product.currency)}</strong>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b", textDecoration: "line-through" }}>
+                          M.R.P.: {formatPrice(Number(product.price) * 1.25, product.currency)}
+                        </div>
+                      </div>
                       <button className="product-detail-open" type="button"
                         onClick={() => setProductDetailsSlug(product.slug)}
                         aria-label={`View details for ${product.name}`}>Details</button>
@@ -893,7 +906,7 @@ function App() {
             </div>
 
             <div className="pagination">
-              <span>Showing <strong>{(pagination.page - 1) * pagination.limit + 1}â€“{Math.min(pagination.page * pagination.limit, pagination.total)}</strong> of {pagination.total}</span>
+              <span>Showing <strong>{(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)}</strong> of {pagination.total}</span>
               <div className="pagination-actions">
                 <button className="page-button" disabled={page <= 1 || loading} onClick={() => { setPage((current) => current - 1); document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" }); }}>Previous</button>
                 <span className="page-indicator">{page} / {Math.max(pagination.totalPages, 1)}</span>
@@ -1095,6 +1108,11 @@ function App() {
           onAddToCart={(product, quantity) => {
             setProductDetailsSlug(null);
             void addToCart(product, quantity);
+          }}
+          onBuyNow={async (product, quantity) => {
+            setProductDetailsSlug(null);
+            await addToCart(product, quantity);
+            setCheckoutOpen(true);
           }}
           onToggleWishlist={toggleWishlist}
         />

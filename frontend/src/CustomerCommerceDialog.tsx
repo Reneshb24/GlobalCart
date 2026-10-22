@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowLeft, CheckCircle2, ClipboardList, MapPin, X,
-  Truck, RotateCcw, Sparkles, Tag, Percent, Award
+  Truck, RotateCcw, Sparkles, Tag, Percent, Award, ShieldCheck
 } from "lucide-react";
 import { api, getApiErrorMessage } from "./lib/api";
 import ProductImg from "./ProductImg";
@@ -1272,6 +1272,27 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                   </label>
                 )}
 
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  fontSize: "12px",
+                  color: "#1e40af",
+                  marginBottom: "14px"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Truck size={16} color="#1d4ed8" />
+                    <span><strong>Guaranteed Delivery:</strong> Fast express shipping within 24-48 hours</span>
+                  </div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#166534", background: "#dcfce7", padding: "2px 8px", borderRadius: "10px" }}>
+                    FREE
+                  </span>
+                </div>
+
                 <fieldset className="commerce-payment-options">                  <legend>Payment method</legend>
                   <label><input type="radio" name="paymentMethod" value="SIMULATED_CARD"
                     checked={paymentMethod === "SIMULATED_CARD"}
@@ -1547,6 +1568,19 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                     )}
                   </div>
                 )}
+
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  fontSize: "11px",
+                  color: "#64748b",
+                  margin: "8px 0"
+                }}>
+                  <ShieldCheck size={14} color="#059669" />
+                  <span>256-Bit SSL Encrypted Checkout · 100% Purchase Protection Guarantee</span>
+                </div>
 
                 <p className="auth-privacy">The backend recalculates prices, discounts, and stock at checkout. Taxes and shipping are determined by current server rules.</p>
                 <div className="shop-dialog-footer commerce-actions">

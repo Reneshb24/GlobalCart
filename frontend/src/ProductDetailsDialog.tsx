@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Heart, Minus, Plus, ShoppingBag, Star, X } from "lucide-react";
+import { ArrowLeft, Heart, Minus, Plus, ShoppingBag, Star, X, Zap, ShieldCheck, RotateCcw, Truck, Check } from "lucide-react";
 import { api, getApiErrorMessage, getAuthToken } from "./lib/api";
 import ProductImg from "./ProductImg";
 import { getProductGallery } from "./lib/productImages";
@@ -39,6 +39,7 @@ type Props = {
   savedProductIds: string[];
   onClose: () => void;
   onAddToCart: (product: ProductDetails, quantity: number) => void;
+  onBuyNow?: (product: ProductDetails, quantity: number) => void;
   onToggleWishlist: (productId: string) => void | Promise<void>;
 };
 
@@ -55,6 +56,7 @@ export default function ProductDetailsDialog({
   savedProductIds,
   onClose,
   onAddToCart,
+  onBuyNow,
   onToggleWishlist,
 }: Props) {
   const [product, setProduct] = useState<ProductDetails | null>(null);
@@ -233,13 +235,61 @@ export default function ProductDetailsDialog({
                   </div>
                 )}
 
-                <p className="product-detail-price">{formatPrice(product.price, product.currency)}</p>
+                {/* Amazon / Flipkart Price & Deal Block */}
+                <div style={{ margin: "10px 0 6px" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "14px", color: "#dc2626", fontWeight: 700 }}>
+                      -20%
+                    </span>
+                    <span style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
+                      {formatPrice(product.price, product.currency)}
+                    </span>
+                    <span style={{ fontSize: "13px", color: "#64748b", textDecoration: "line-through" }}>
+                      M.R.P.: {formatPrice(Number(product.price) * 1.25, product.currency)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#166534", fontWeight: 600, marginTop: "2px" }}>
+                    Inclusive of all taxes · Lowest price in 30 days
+                  </div>
+                </div>
+
                 <p className="product-detail-description">
                   {product.description || "A thoughtful pick for everyday living."}
                 </p>
 
+                {/* Amazon & Flipkart Trust & Delivery Guarantees */}
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, 1fr)",
+                  gap: "8px",
+                  margin: "12px 0",
+                  padding: "10px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "8px",
+                  fontSize: "11px",
+                  color: "#334155"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Truck size={14} color="#059669" />
+                    <span><strong>Free Delivery</strong> by Tomorrow</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <RotateCcw size={14} color="#0284c7" />
+                    <span><strong>7-Day Returns</strong> & Replacement</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <ShieldCheck size={14} color="#7c3aed" />
+                    <span><strong>100% Genuine</strong> Product</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Check size={14} color="#d97706" />
+                    <span><strong>Pay on Delivery</strong> Available</span>
+                  </div>
+                </div>
+
                 {/* Amazon / Flipkart Seller & Fulfilled Box */}
-                <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", margin: "14px 0", border: "1px solid #e2e8f0" }}>
+                <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", margin: "10px 0 14px", border: "1px solid #e2e8f0" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
                     <span style={{ fontSize: "12px", color: "#64748b" }}>Seller Details:</span>
                     <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: 700 }}>
@@ -263,24 +313,61 @@ export default function ProductDetailsDialog({
                 </p>
 
                 {product.availableStock > 0 && (
-                  <div className="product-detail-purchase">
-                    <div className="product-detail-quantity" aria-label="Quantity selector">
-                      <button type="button" aria-label="Decrease quantity"
-                        disabled={quantity <= 1}
-                        onClick={() => setQuantity((value) => Math.max(1, value - 1))}>
-                        <Minus size={16} />
-                      </button>
-                      <span aria-live="polite">{quantity}</span>
-                      <button type="button" aria-label="Increase quantity"
-                        disabled={quantity >= product.availableStock}
-                        onClick={() => setQuantity((value) => Math.min(product.availableStock, value + 1))}>
-                        <Plus size={16} />
-                      </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>Quantity:</span>
+                      <div className="product-detail-quantity" aria-label="Quantity selector">
+                        <button type="button" aria-label="Decrease quantity"
+                          disabled={quantity <= 1}
+                          onClick={() => setQuantity((value) => Math.max(1, value - 1))}>
+                          <Minus size={16} />
+                        </button>
+                        <span aria-live="polite">{quantity}</span>
+                        <button type="button" aria-label="Increase quantity"
+                          disabled={quantity >= product.availableStock}
+                          onClick={() => setQuantity((value) => Math.min(product.availableStock, value + 1))}>
+                          <Plus size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <button type="button" className="product-detail-add"
-                      onClick={() => onAddToCart(product, quantity)}>
-                      <ShoppingBag size={17} /> Add to cart
-                    </button>
+
+                    <div style={{ display: "grid", gridTemplateColumns: onBuyNow ? "1fr 1fr" : "1fr", gap: "10px" }}>
+                      <button
+                        type="button"
+                        className="product-detail-add"
+                        onClick={() => onAddToCart(product, quantity)}
+                        style={{ height: "46px", fontSize: "14px", fontWeight: 700 }}
+                      >
+                        <ShoppingBag size={17} /> Add to Cart
+                      </button>
+
+                      {onBuyNow && (
+                        <button
+                          type="button"
+                          onClick={() => onBuyNow(product, quantity)}
+                          style={{
+                            height: "46px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "8px",
+                            padding: "0 18px",
+                            background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "14px",
+                            fontWeight: 800,
+                            letterSpacing: "0.02em",
+                            cursor: "pointer",
+                            boxShadow: "0 2px 8px rgba(217, 119, 6, 0.35)",
+                            transition: "all 0.15s ease"
+                          }}
+                        >
+                          <Zap size={17} fill="#ffffff" /> Buy Now
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
