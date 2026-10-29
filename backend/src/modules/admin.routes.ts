@@ -367,6 +367,72 @@ adminRouter.post("/products/:productId/archive", async (req, res) => {
   }
 });
 
+adminRouter.delete("/products/:productId", async (req, res) => {
+  const productId = req.params.productId;
+  if (!uuidSchema.safeParse(productId).success) {
+    res.status(400).json({ error: "Invalid product ID" });
+    return;
+  }
+
+  try {
+    const existing = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        _count: {
+          select: { orderItems: true }
+        }
+      }
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: "Product not found" });
+      return;
+    }
+
+    if (existing._count.orderItems > 0) {
+      // Historical orders exist: safely archive product to preserve legal order integrity
+      await prisma.$transaction([
+        prisma.cartItem.deleteMany({ where: { productId } }),
+        prisma.wishlistItem.deleteMany({ where: { productId } }),
+        prisma.inventory.updateMany({
+          where: { productId },
+          data: { quantity: 0, reserved: 0 }
+        }),
+        prisma.product.update({
+          where: { id: productId },
+          data: { status: "ARCHIVED" }
+        })
+      ]);
+
+      res.json({
+        message: `Product "${existing.name}" has historical orders and was safely archived and removed from customer catalog.`,
+        archived: true,
+        productId
+      });
+      return;
+    }
+
+    // No historical orders: perform complete clean deletion
+    await prisma.$transaction([
+      prisma.cartItem.deleteMany({ where: { productId } }),
+      prisma.wishlistItem.deleteMany({ where: { productId } }),
+      prisma.inventory.deleteMany({ where: { productId } }),
+      prisma.productImage.deleteMany({ where: { productId } }),
+      prisma.review.deleteMany({ where: { productId } }),
+      prisma.offer.deleteMany({ where: { productId } }),
+      prisma.product.delete({ where: { id: productId } })
+    ]);
+
+    res.json({
+      message: `Product "${existing.name}" has been permanently deleted.`,
+      deleted: true,
+      productId
+    });
+  } catch (error) {
+    handleWriteError(res, error);
+  }
+});
+
 // -------------------- CATEGORIES --------------------
 
 adminRouter.get("/categories", async (_req, res) => {

@@ -692,6 +692,26 @@ export default function AdminPortal() {
     }
   }
 
+  // Delete or Archive Product
+  async function handleDeleteProduct(productId: string, productName: string) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${productName}"?\n\nIf it has customer order history, it will be safely archived and removed from the active storefront catalog. If it has no orders, it will be permanently deleted.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await api.delete<{ message: string; archived?: boolean; deleted?: boolean }>(`/admin/products/${productId}`);
+      setFeedback({ type: "success", text: res.data.message || `Product "${productName}" deleted successfully.` });
+      setProducts(prev => prev.filter(p => p.id !== productId));
+      if (editingProduct && editingProduct.id === productId) {
+        setShowProductModal(false);
+        setEditingProduct(null);
+      }
+    } catch (err) {
+      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to delete product.") });
+    }
+  }
+
   // Vendors management
   async function handleSaveVendor(e: React.FormEvent) {
     e.preventDefault();
@@ -1289,35 +1309,54 @@ export default function AdminPortal() {
                                 </span>
                               </td>
                               <td>
-                                <button
-                                  className="admin-btn-secondary admin-btn-sm"
-                                  onClick={() => {
-                                    const sortedImages = [...(p.images || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-                                    setEditingProduct(p);
-                                    setProductForm({
-                                      sku: p.sku,
-                                      name: p.name,
-                                      slug: p.slug,
-                                      description: p.description,
-                                      brand: p.brand || "",
-                                      price: Number(p.price),
-                                      currency: p.currency,
-                                      categoryId: p.categoryId,
-                                      vendorId: p.vendorId || p.vendor?.id || "",
-                                      status: p.status,
-                                      imageUrl: sortedImages[0]?.url || "",
-                                      image1: sortedImages.find((i) => i.position === 0)?.url || sortedImages[0]?.url || "",
-                                      image2: sortedImages.find((i) => i.position === 1)?.url || sortedImages[1]?.url || "",
-                                      image3: sortedImages.find((i) => i.position === 2)?.url || sortedImages[2]?.url || "",
-                                      image4: sortedImages.find((i) => i.position === 3)?.url || sortedImages[3]?.url || "",
-                                      initialQuantity: p.inventory?.reduce((sum, inv) => sum + (inv.quantity || 0), 0) || 0,
-                                      warehouseId: (p.inventory?.[0] as any)?.warehouseId || (p.inventory?.[0] as any)?.warehouse?.id || warehouses[0]?.id || ""
-                                    });
-                                    setShowProductModal(true);
-                                  }}
-                                >
-                                  Edit
-                                </button>
+                                <div style={{ display: "flex", gap: "6px" }}>
+                                  <button
+                                    className="admin-btn-secondary admin-btn-sm"
+                                    onClick={() => {
+                                      const sortedImages = [...(p.images || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+                                      setEditingProduct(p);
+                                      setProductForm({
+                                        sku: p.sku,
+                                        name: p.name,
+                                        slug: p.slug,
+                                        description: p.description,
+                                        brand: p.brand || "",
+                                        price: Number(p.price),
+                                        currency: p.currency,
+                                        categoryId: p.categoryId,
+                                        vendorId: p.vendorId || p.vendor?.id || "",
+                                        status: p.status,
+                                        imageUrl: sortedImages[0]?.url || "",
+                                        image1: sortedImages.find((i) => i.position === 0)?.url || sortedImages[0]?.url || "",
+                                        image2: sortedImages.find((i) => i.position === 1)?.url || sortedImages[1]?.url || "",
+                                        image3: sortedImages.find((i) => i.position === 2)?.url || sortedImages[2]?.url || "",
+                                        image4: sortedImages.find((i) => i.position === 3)?.url || sortedImages[3]?.url || "",
+                                        initialQuantity: p.inventory?.reduce((sum, inv) => sum + (inv.quantity || 0), 0) || 0,
+                                        warehouseId: (p.inventory?.[0] as any)?.warehouseId || (p.inventory?.[0] as any)?.warehouse?.id || warehouses[0]?.id || ""
+                                      });
+                                      setShowProductModal(true);
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-btn-danger admin-btn-sm"
+                                    style={{
+                                      background: totalAvailable <= 0 ? "#dc2626" : "#fee2e2",
+                                      color: totalAvailable <= 0 ? "#ffffff" : "#b91c1c",
+                                      border: "1px solid #fca5a5",
+                                      fontWeight: 600,
+                                      padding: "4px 8px",
+                                      borderRadius: "4px",
+                                      cursor: "pointer"
+                                    }}
+                                    title={totalAvailable <= 0 ? "Out of Stock - Delete or Archive Listing" : "Delete Product Listing"}
+                                    onClick={() => void handleDeleteProduct(p.id, p.name)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -2462,13 +2501,35 @@ export default function AdminPortal() {
                   </div>
                 </div>
               </div>
-              <div className="admin-modal-footer">
-                <button type="button" className="admin-btn-secondary" onClick={() => setShowProductModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="admin-btn-primary">
-                  {editingProduct ? "Save Changes" : "Create Product with 4 Angles"}
-                </button>
+              <div className="admin-modal-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  {editingProduct && (
+                    <button
+                      type="button"
+                      style={{
+                        background: "#fee2e2",
+                        color: "#b91c1c",
+                        border: "1px solid #fca5a5",
+                        padding: "8px 14px",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                      onClick={() => void handleDeleteProduct(editingProduct.id, editingProduct.name)}
+                    >
+                      Delete Product
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button type="button" className="admin-btn-secondary" onClick={() => setShowProductModal(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="admin-btn-primary">
+                    {editingProduct ? "Save Changes" : "Create Product with 4 Angles"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

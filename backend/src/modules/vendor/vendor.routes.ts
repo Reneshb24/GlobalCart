@@ -471,6 +471,105 @@ vendorRouter.patch("/products/:productId", async (req, res) => {
   }
 });
 
+vendorRouter.post("/products/:productId/archive", async (req, res) => {
+  const vendor = (req as VendorRequest).vendor!;
+  const productId = req.params.productId;
+
+  if (!uuidSchema.safeParse(productId).success) {
+    res.status(400).json({ error: "Invalid product ID" });
+    return;
+  }
+
+  try {
+    const existing = await prisma.product.findFirst({
+      where: { id: productId, vendorId: vendor.id }
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: "Product not found or not owned by your vendor account" });
+      return;
+    }
+
+    const updated = await prisma.product.update({
+      where: { id: productId },
+      data: { status: "ARCHIVED" },
+      select: { id: true, name: true, slug: true, status: true }
+    });
+
+    res.json({ message: "Product archived successfully", product: updated });
+  } catch (error) {
+    handleWriteError(res, error);
+  }
+});
+
+vendorRouter.delete("/products/:productId", async (req, res) => {
+  const vendor = (req as VendorRequest).vendor!;
+  const productId = req.params.productId;
+
+  if (!uuidSchema.safeParse(productId).success) {
+    res.status(400).json({ error: "Invalid product ID" });
+    return;
+  }
+
+  try {
+    const existing = await prisma.product.findFirst({
+      where: { id: productId, vendorId: vendor.id },
+      include: {
+        _count: {
+          select: { orderItems: true }
+        }
+      }
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: "Product not found or not owned by your vendor account" });
+      return;
+    }
+
+    if (existing._count.orderItems > 0) {
+      // Historical orders exist: safely archive product to preserve order history
+      await prisma.$transaction([
+        prisma.cartItem.deleteMany({ where: { productId } }),
+        prisma.wishlistItem.deleteMany({ where: { productId } }),
+        prisma.inventory.updateMany({
+          where: { productId },
+          data: { quantity: 0, reserved: 0 }
+        }),
+        prisma.product.update({
+          where: { id: productId },
+          data: { status: "ARCHIVED" }
+        })
+      ]);
+
+      res.json({
+        message: `Product "${existing.name}" has historical orders and was safely archived and removed from storefront catalog.`,
+        archived: true,
+        productId
+      });
+      return;
+    }
+
+    // No historical orders: perform complete clean deletion
+    await prisma.$transaction([
+      prisma.cartItem.deleteMany({ where: { productId } }),
+      prisma.wishlistItem.deleteMany({ where: { productId } }),
+      prisma.inventory.deleteMany({ where: { productId } }),
+      prisma.productImage.deleteMany({ where: { productId } }),
+      prisma.review.deleteMany({ where: { productId } }),
+      prisma.offer.deleteMany({ where: { productId } }),
+      prisma.product.delete({ where: { id: productId } })
+    ]);
+
+    res.json({
+      message: `Product "${existing.name}" has been permanently deleted.`,
+      deleted: true,
+      productId
+    });
+  } catch (error) {
+    handleWriteError(res, error);
+  }
+});
+
 // -------------------- INVENTORY --------------------
 
 vendorRouter.get("/inventory", async (req, res) => {
