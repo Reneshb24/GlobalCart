@@ -888,13 +888,13 @@ function App() {
                     <div className="product-bottom">
                       <div>
                         <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
-                          <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 700 }}>-{discountInfo.discountPercent}%</span>
+                          <span className="product-discount-pill" style={{ fontSize: "11px", color: "#dc2626", fontWeight: 700 }}>-{discountInfo.discountPercent}%</span>
                           <strong className="product-price">{formatPrice(product.price, product.currency)}</strong>
                         </div>
-                        <div style={{ fontSize: "11px", color: "#64748b", textDecoration: "line-through" }}>
+                        <div className="product-mrp" style={{ fontSize: "11px", color: "#64748b", textDecoration: "line-through" }}>
                           M.R.P.: {formatPrice(discountInfo.originalPrice, product.currency)}
                         </div>
-                        <div style={{ fontSize: "10px", color: "#b45309", fontWeight: 700, marginTop: "1px" }}>
+                        <div className="product-deal-badge" style={{ fontSize: "10px", color: "#b45309", fontWeight: 700, marginTop: "1px" }}>
                           ⚡ {discountInfo.dealLabel}
                         </div>
                       </div>
@@ -1118,6 +1118,7 @@ function App() {
           onBuyNow={async (product, quantity) => {
             setProductDetailsSlug(null);
             await addToCart(product, quantity);
+            setCartOpen(false);
             setCheckoutOpen(true);
           }}
           onToggleWishlist={toggleWishlist}

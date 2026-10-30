@@ -395,6 +395,9 @@ export async function checkout(userId: string, input: CheckoutInput) {
           pointsEarned
         }
       };
+    }, {
+      maxWait: 15000,
+      timeout: 30000
     });
     } catch (error) {
       if (error instanceof OrderError) throw error;
@@ -496,6 +499,9 @@ export async function cancelOrder(userId: string, orderId: string) {
         orderId,
         status: "CANCELLED"
       };
+    }, {
+      maxWait: 15000,
+      timeout: 30000
     });
   } catch (error) {
     if (error instanceof OrderError) throw error;

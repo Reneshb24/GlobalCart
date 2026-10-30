@@ -1,3 +1,6 @@
+import "dotenv/config";
+import "./lib/dns-setup";
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";

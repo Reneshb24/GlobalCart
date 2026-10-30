@@ -1243,35 +1243,35 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                 {(selectedAddressId === "new" || addresses.length === 0) && (
                   <div className="commerce-form-grid">
                     <label className="commerce-field">Recipient name
-                      <input required minLength={2} maxLength={100} value={address.recipient}
+                      <input name="recipient" required minLength={2} maxLength={100} value={address.recipient}
                         onChange={(event) => updateAddress("recipient", event.target.value)} />
                     </label>
                     <label className="commerce-field">Phone (optional)
-                      <input maxLength={30} value={address.phone ?? ""}
+                      <input name="phone" maxLength={30} value={address.phone ?? ""}
                         onChange={(event) => updateAddress("phone", event.target.value)} />
                     </label>
                     <label className="commerce-field commerce-field-full">Address line 1
-                      <input required minLength={3} maxLength={200} value={address.line1}
+                      <input name="line1" required minLength={3} maxLength={200} value={address.line1}
                         onChange={(event) => updateAddress("line1", event.target.value)} />
                     </label>
                     <label className="commerce-field commerce-field-full">Address line 2 (optional)
-                      <input maxLength={200} value={address.line2 ?? ""}
+                      <input name="line2" maxLength={200} value={address.line2 ?? ""}
                         onChange={(event) => updateAddress("line2", event.target.value)} />
                     </label>
                     <label className="commerce-field">City
-                      <input required minLength={2} maxLength={100} value={address.city}
+                      <input name="city" required minLength={2} maxLength={100} value={address.city}
                         onChange={(event) => updateAddress("city", event.target.value)} />
                     </label>
                     <label className="commerce-field">State / Region
-                      <input required minLength={2} maxLength={100} value={address.region}
+                      <input name="region" required minLength={2} maxLength={100} value={address.region}
                         onChange={(event) => updateAddress("region", event.target.value)} />
                     </label>
                     <label className="commerce-field">Postal code
-                      <input required minLength={2} maxLength={20} value={address.postalCode}
+                      <input name="postalCode" required minLength={2} maxLength={20} value={address.postalCode}
                         onChange={(event) => updateAddress("postalCode", event.target.value)} />
                     </label>
                     <label className="commerce-field">Country code
-                      <input required minLength={2} maxLength={2} pattern="[A-Za-z]{2}"
+                      <input name="countryCode" required minLength={2} maxLength={2} pattern="[A-Za-z]{2}"
                         value={address.countryCode}
                         onChange={(event) => updateAddress("countryCode", event.target.value.toUpperCase())} />
                     </label>

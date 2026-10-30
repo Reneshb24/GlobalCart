@@ -243,16 +243,16 @@ export default function ProductDetailsDialog({
                 {discountInfo && (
                   <div style={{ margin: "10px 0 6px" }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "14px", color: "#dc2626", fontWeight: 700, background: "#fee2e2", padding: "2px 8px", borderRadius: "4px" }}>
+                      <span className="modal-discount-pill" style={{ fontSize: "14px", color: "#dc2626", fontWeight: 700, background: "#fee2e2", padding: "2px 8px", borderRadius: "4px" }}>
                         -{discountInfo.discountPercent}% OFF
                       </span>
-                      <span style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
+                      <span className="modal-price" style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
                         {formatPrice(product.price, product.currency)}
                       </span>
-                      <span style={{ fontSize: "13px", color: "#64748b", textDecoration: "line-through" }}>
+                      <span className="modal-mrp" style={{ fontSize: "13px", color: "#64748b", textDecoration: "line-through" }}>
                         M.R.P.: {formatPrice(discountInfo.originalPrice, product.currency)}
                       </span>
-                      <span style={{ fontSize: "11px", background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                      <span className="modal-deal-badge" style={{ fontSize: "11px", background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
                         ⚡ {discountInfo.dealLabel}
                       </span>
                     </div>
@@ -353,6 +353,7 @@ export default function ProductDetailsDialog({
                       {onBuyNow && (
                         <button
                           type="button"
+                          className="product-detail-buy-now"
                           onClick={() => onBuyNow(product, quantity)}
                           style={{
                             height: "46px",

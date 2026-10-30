@@ -1,4 +1,4 @@
-﻿import { Prisma } from "../../generated/prisma/client";
+import { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../../lib/prisma";
 import type { AddCartItemInput, UpdateCartItemInput } from "./cart.schemas";
 
@@ -237,6 +237,9 @@ export async function addCartItem(
         : "Item added to cart",
       item
     };
+  }, {
+    maxWait: 15000,
+    timeout: 30000
   });
 }
 
