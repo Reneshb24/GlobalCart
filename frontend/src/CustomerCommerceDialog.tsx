@@ -169,7 +169,7 @@ type CheckoutResult = {
   };
   loyalty?: {
     pointsRedeemed: number;
-    discountAmount: number;
+    discountAmount: number | string;
     pointsEarned: number;
   };
 };
@@ -590,7 +590,7 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                 )}
                 {result.loyalty.pointsRedeemed > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#047857", fontSize: "12px", marginTop: "4px" }}>
-                    <CheckCircle2 size={14} /> Redeemed {result.loyalty.pointsRedeemed} points (-${result.loyalty.discountAmount.toFixed(2)} instant discount)
+                    <CheckCircle2 size={14} /> Redeemed {result.loyalty.pointsRedeemed} points (-${Number(result.loyalty.discountAmount || 0).toFixed(2)} instant discount)
                   </div>
                 )}
               </div>

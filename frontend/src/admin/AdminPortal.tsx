@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Tags, Warehouse, RotateCcw,
   Star, Tag, Users, CreditCard, ArrowLeft, LogOut, Plus,
   RefreshCw, CheckCircle, XCircle, AlertTriangle, Truck, Eye, ShieldCheck, X,
-  Store, Camera
+  Store, Camera, Upload
 } from "lucide-react";
 import { api, clearAuthToken, getApiErrorMessage, getAuthToken, setAuthToken } from "../lib/api";
 import ProductImg from "../ProductImg";
@@ -254,6 +254,51 @@ export default function AdminPortal() {
     initialQuantity: 10,
     warehouseId: ""
   });
+
+  const [uploadingAngle, setUploadingAngle] = useState<number | null>(null);
+
+  async function handleImageUpload(angleIndex: number, file: File) {
+    if (!file) return;
+    setUploadingAngle(angleIndex);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUri = reader.result as string;
+        try {
+          const res = await api.post<{ url: string }>("/upload", {
+            file: dataUri,
+            filename: file.name
+          });
+          const uploadedUrl = res.data.url;
+          if (angleIndex === 1) {
+            setProductForm((prev) => ({ ...prev, image1: uploadedUrl, imageUrl: uploadedUrl }));
+          } else if (angleIndex === 2) {
+            setProductForm((prev) => ({ ...prev, image2: uploadedUrl }));
+          } else if (angleIndex === 3) {
+            setProductForm((prev) => ({ ...prev, image3: uploadedUrl }));
+          } else if (angleIndex === 4) {
+            setProductForm((prev) => ({ ...prev, image4: uploadedUrl }));
+          }
+        } catch {
+          // Graceful fallback to dataUri if backend upload route is unreachable
+          if (angleIndex === 1) {
+            setProductForm((prev) => ({ ...prev, image1: dataUri, imageUrl: dataUri }));
+          } else if (angleIndex === 2) {
+            setProductForm((prev) => ({ ...prev, image2: dataUri }));
+          } else if (angleIndex === 3) {
+            setProductForm((prev) => ({ ...prev, image3: dataUri }));
+          } else if (angleIndex === 4) {
+            setProductForm((prev) => ({ ...prev, image4: dataUri }));
+          }
+        } finally {
+          setUploadingAngle(null);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setUploadingAngle(null);
+    }
+  }
 
   const [vendors, setVendors] = useState<AdminVendor[]>([]);
   const [vendorSearch, setVendorSearch] = useState("");
@@ -2414,19 +2459,62 @@ export default function AdminPortal() {
                     </button>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "12px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
                     {/* Angle 1 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 1: Front / Hero View *
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (Front View)"
-                        value={productForm.image1}
-                        onChange={(e) => setProductForm({ ...productForm, image1: e.target.value, imageUrl: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase" }}>
+                          Angle 1: Front / Hero View *
+                        </label>
+                        {productForm.image1 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image1: "", imageUrl: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image1}
+                          onChange={(e) => setProductForm({ ...productForm, image1: e.target.value, imageUrl: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 1 ? "#cbd5e1" : "#f1f5f9",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#334155",
+                            cursor: uploadingAngle === 1 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 1 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 1}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(1, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image1 ? (
                           <ProductImg src={productForm.image1} alt="Front Hero" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 1"} />
@@ -2438,16 +2526,59 @@ export default function AdminPortal() {
 
                     {/* Angle 2 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 2: Side Profile View
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (Side Profile)"
-                        value={productForm.image2}
-                        onChange={(e) => setProductForm({ ...productForm, image2: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase" }}>
+                          Angle 2: Side Profile View
+                        </label>
+                        {productForm.image2 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image2: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image2}
+                          onChange={(e) => setProductForm({ ...productForm, image2: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 2 ? "#cbd5e1" : "#f1f5f9",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#334155",
+                            cursor: uploadingAngle === 2 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 2 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 2}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(2, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image2 ? (
                           <ProductImg src={productForm.image2} alt="Side Profile" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 2"} />
@@ -2459,16 +2590,59 @@ export default function AdminPortal() {
 
                     {/* Angle 3 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 3: Lifestyle / In-Context
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (Lifestyle Setup)"
-                        value={productForm.image3}
-                        onChange={(e) => setProductForm({ ...productForm, image3: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase" }}>
+                          Angle 3: Lifestyle / In-Context
+                        </label>
+                        {productForm.image3 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image3: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image3}
+                          onChange={(e) => setProductForm({ ...productForm, image3: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 3 ? "#cbd5e1" : "#f1f5f9",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#334155",
+                            cursor: uploadingAngle === 3 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 3 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 3}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(3, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image3 ? (
                           <ProductImg src={productForm.image3} alt="Lifestyle" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 3"} />
@@ -2480,16 +2654,59 @@ export default function AdminPortal() {
 
                     {/* Angle 4 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 4: Detail / Macro View
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (Detail Close-up)"
-                        value={productForm.image4}
-                        onChange={(e) => setProductForm({ ...productForm, image4: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#334155", textTransform: "uppercase" }}>
+                          Angle 4: Detail / Macro View
+                        </label>
+                        {productForm.image4 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image4: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image4}
+                          onChange={(e) => setProductForm({ ...productForm, image4: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 4 ? "#cbd5e1" : "#f1f5f9",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#334155",
+                            cursor: uploadingAngle === 4 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 4 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 4}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(4, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "8px", height: "70px", background: "#f1f5f9", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image4 ? (
                           <ProductImg src={productForm.image4} alt="Detail Macro" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 4"} />

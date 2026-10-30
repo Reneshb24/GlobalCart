@@ -6,8 +6,20 @@ import { authenticateToken, type AuthenticatedRequest } from "../../middleware/a
 import { AuthError, registerUser } from "./auth.service";
 import { loginUser } from "./auth.login";
 import { loginSchema, registerSchema } from "./auth.schemas";
+import bcrypt from "bcryptjs";
+import { signAuthToken } from "../../utils/jwt";
 
 const authRouter = Router();
+
+const vendorRegisterSchema = z.object({
+  email: z.string().trim().email().max(254).transform((v) => v.toLowerCase()),
+  password: z.string().min(8).max(72),
+  businessName: z.string().trim().min(2).max(150),
+  firstName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().min(1).max(80),
+  phone: z.string().trim().max(30).optional(),
+  nearestWarehouseId: z.string().uuid().optional()
+});
 
 authRouter.post("/register", async (req: Request, res: Response) => {
   const parsed = registerSchema.safeParse(req.body);
@@ -41,6 +53,109 @@ authRouter.post("/register", async (req: Request, res: Response) => {
     res.status(500).json({
       error: "Unable to create account"
     });
+  }
+});
+
+authRouter.post("/register-vendor", async (req: Request, res: Response) => {
+  const parsed = vendorRegisterSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "Invalid vendor registration details",
+      details: parsed.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message
+      }))
+    });
+    return;
+  }
+
+  const { email, password, businessName, firstName, lastName, phone, nearestWarehouseId } = parsed.data;
+
+  try {
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      res.status(409).json({ error: "An account with this email already exists" });
+      return;
+    }
+
+    const existingVendor = await prisma.vendor.findFirst({ where: { email } });
+    if (existingVendor) {
+      res.status(409).json({ error: "A vendor with this business email is already registered" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email,
+          passwordHash,
+          firstName,
+          lastName,
+          phone: phone || null,
+          role: "VENDOR",
+          isActive: true
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          role: true,
+          createdAt: true
+        }
+      });
+
+      const vendor = await tx.vendor.create({
+        data: {
+          name: businessName,
+          email,
+          phone: phone || null,
+          isActive: true
+        }
+      });
+
+      const token = signAuthToken({
+        userId: user.id,
+        role: "VENDOR"
+      });
+
+      return { token, user, vendor };
+    });
+
+    res.status(201).json({
+      message: "Vendor business account created successfully",
+      token: result.token,
+      user: result.user,
+      vendor: result.vendor
+    });
+  } catch (error) {
+    console.error("Vendor registration failed:", error);
+    res.status(500).json({ error: "Unable to complete vendor registration" });
+  }
+});
+
+authRouter.get("/warehouses/public", async (_req, res) => {
+  try {
+    const warehouses = await prisma.warehouse.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        city: true,
+        region: true,
+        countryCode: true
+      },
+      orderBy: { name: "asc" }
+    });
+    res.json({ warehouses });
+  } catch (error) {
+    console.error("Public warehouse fetch failed:", error);
+    res.status(500).json({ error: "Unable to load warehouses" });
   }
 });
 

@@ -365,7 +365,7 @@ export async function checkout(userId: string, input: CheckoutInput) {
         },
         loyalty: {
           pointsRedeemed: loyaltyPointsRedeemed,
-          discountAmount: loyaltyDiscount.toFixed(2),
+          discountAmount: Number(loyaltyDiscount.toFixed(2)),
           pointsEarned
         }
       };

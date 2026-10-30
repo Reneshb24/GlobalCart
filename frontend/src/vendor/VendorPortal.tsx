@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingBag, Package, Warehouse, ArrowLeft, LogOut,
-  Plus, RefreshCw, AlertTriangle, Eye, Store, X, Camera
+  Plus, RefreshCw, AlertTriangle, Eye, Store, X, Camera, Upload
 } from "lucide-react";
 import { api, clearAuthToken, getApiErrorMessage, getAuthToken, setAuthToken } from "../lib/api";
 import ProductImg from "../ProductImg";
@@ -107,6 +107,20 @@ export default function VendorPortal() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [deniedRole, setDeniedRole] = useState<string | null>(null);
 
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [publicWarehouses, setPublicWarehouses] = useState<VendorWarehouse[]>([]);
+  const [registerForm, setRegisterForm] = useState({
+    businessName: "",
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    phone: "",
+    nearestWarehouseId: ""
+  });
+  const [registerError, setRegisterError] = useState("");
+  const [registerBusy, setRegisterBusy] = useState(false);
+
   const [activeTab, setActiveTab] = useState<VendorTab>("dashboard");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -137,6 +151,51 @@ export default function VendorPortal() {
     initialQuantity: 10,
     warehouseId: ""
   });
+
+  const [uploadingAngle, setUploadingAngle] = useState<number | null>(null);
+
+  async function handleImageUpload(angleIndex: number, file: File) {
+    if (!file) return;
+    setUploadingAngle(angleIndex);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUri = reader.result as string;
+        try {
+          const res = await api.post<{ url: string }>("/upload", {
+            file: dataUri,
+            filename: file.name
+          });
+          const uploadedUrl = res.data.url;
+          if (angleIndex === 1) {
+            setProductForm((prev) => ({ ...prev, image1: uploadedUrl, imageUrl: uploadedUrl }));
+          } else if (angleIndex === 2) {
+            setProductForm((prev) => ({ ...prev, image2: uploadedUrl }));
+          } else if (angleIndex === 3) {
+            setProductForm((prev) => ({ ...prev, image3: uploadedUrl }));
+          } else if (angleIndex === 4) {
+            setProductForm((prev) => ({ ...prev, image4: uploadedUrl }));
+          }
+        } catch {
+          // Graceful fallback to dataUri if backend upload route is unreachable
+          if (angleIndex === 1) {
+            setProductForm((prev) => ({ ...prev, image1: dataUri, imageUrl: dataUri }));
+          } else if (angleIndex === 2) {
+            setProductForm((prev) => ({ ...prev, image2: dataUri }));
+          } else if (angleIndex === 3) {
+            setProductForm((prev) => ({ ...prev, image3: dataUri }));
+          } else if (angleIndex === 4) {
+            setProductForm((prev) => ({ ...prev, image4: dataUri }));
+          }
+        } finally {
+          setUploadingAngle(null);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setUploadingAngle(null);
+    }
+  }
 
   // Categories & Warehouses for select
   const [categories, setCategories] = useState<VendorCategory[]>([]);
@@ -172,7 +231,47 @@ export default function VendorPortal() {
       }
     }
     void checkAuth();
+
+    async function loadPublicWarehouses() {
+      try {
+        const res = await api.get<{ warehouses: VendorWarehouse[] }>("/auth/warehouses/public");
+        setPublicWarehouses(res.data.warehouses || []);
+      } catch {
+        // Ignore if unauthenticated
+      }
+    }
+    void loadPublicWarehouses();
   }, []);
+
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    setRegisterBusy(true);
+    setRegisterError("");
+    try {
+      const res = await api.post<{
+        token: string;
+        user: VendorUser;
+        vendor: { id: string; name: string; email: string | null; phone: string | null };
+      }>("/auth/register-vendor", {
+        businessName: registerForm.businessName.trim(),
+        firstName: registerForm.firstName.trim(),
+        lastName: registerForm.lastName.trim(),
+        email: registerForm.email.trim(),
+        password: registerForm.password,
+        phone: registerForm.phone.trim() || undefined,
+        nearestWarehouseId: registerForm.nearestWarehouseId || undefined
+      });
+      setAuthToken(res.data.token);
+      setCurrentUser(res.data.user);
+      setVendorProfile(res.data.vendor);
+      setDeniedRole(null);
+      setFeedback({ type: "success", text: `Welcome to GlobalCart! Your seller business "${res.data.vendor.name}" is now active.` });
+    } catch (err) {
+      setRegisterError(getApiErrorMessage(err, "Registration failed. Please check your details."));
+    } finally {
+      setRegisterBusy(false);
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -400,56 +499,226 @@ export default function VendorPortal() {
   if (!currentUser) {
     return (
       <div className="vendor-guard-container">
-        <div className="vendor-guard-card">
+        <div className="vendor-guard-card" style={{ maxWidth: authMode === "register" ? "520px" : "420px", transition: "max-width 0.2s" }}>
           <Store size={40} color="#d97706" style={{ margin: "0 auto" }} />
-          <h2>GlobalCart Vendor Portal</h2>
-          <p>Sign in with your verified vendor partner account.</p>
-          <form onSubmit={handleLogin} style={{ textAlign: "left" }}>
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "6px" }}>
-                Partner Email Address
-              </label>
-              <input
-                type="email"
-                required
-                style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="partner@example.com"
-              />
-            </div>
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "6px" }}>
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Password"
-              />
-            </div>
-            {loginError && (
-              <div style={{ padding: "10px 14px", borderRadius: "6px", fontSize: "12px", marginBottom: "16px", background: "#fee2e2", color: "#991b1b" }}>
-                {loginError}
-              </div>
-            )}
+          <h2>GlobalCart Seller Hub</h2>
+          <p style={{ margin: "4px 0 16px" }}>
+            {authMode === "login"
+              ? "Sign in to manage your marketplace listings, orders & stock."
+              : "Register your business, select your nearest fulfillment warehouse, and start selling."}
+          </p>
+
+          <div style={{ display: "flex", background: "#f5f5f4", borderRadius: "8px", padding: "4px", marginBottom: "18px" }}>
             <button
-              type="submit"
-              className="vendor-btn-primary"
-              style={{ width: "100%", justifyContent: "center", padding: "10px" }}
-              disabled={loginBusy}
+              type="button"
+              onClick={() => { setAuthMode("login"); setLoginError(""); setRegisterError(""); }}
+              style={{
+                flex: 1,
+                padding: "8px",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: authMode === "login" ? "#ffffff" : "transparent",
+                color: authMode === "login" ? "#d97706" : "#78716c",
+                boxShadow: authMode === "login" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+              }}
             >
-              {loginBusy ? "Authenticating..." : "Access Vendor Portal"}
+              Partner Sign In
             </button>
-            <div style={{ marginTop: "16px", textAlign: "center" }}>
-              <a href="/" style={{ color: "#78716c", fontSize: "12px", textDecoration: "none" }}>
-                ← Return to Storefront
-              </a>
-            </div>
-          </form>
+            <button
+              type="button"
+              onClick={() => { setAuthMode("register"); setLoginError(""); setRegisterError(""); }}
+              style={{
+                flex: 1,
+                padding: "8px",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: authMode === "register" ? "#ffffff" : "transparent",
+                color: authMode === "register" ? "#d97706" : "#78716c",
+                boxShadow: authMode === "register" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+              }}
+            >
+              Register New Seller
+            </button>
+          </div>
+
+          {authMode === "login" ? (
+            <form onSubmit={handleLogin} style={{ textAlign: "left" }}>
+              <div style={{ marginBottom: "14px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                  Partner Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="partner@example.com"
+                />
+              </div>
+              <div style={{ marginBottom: "14px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Password"
+                />
+              </div>
+              {loginError && (
+                <div style={{ padding: "10px 14px", borderRadius: "6px", fontSize: "12px", marginBottom: "14px", background: "#fee2e2", color: "#991b1b" }}>
+                  {loginError}
+                </div>
+              )}
+              <button
+                type="submit"
+                className="vendor-btn-primary"
+                style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: "13px" }}
+                disabled={loginBusy}
+              >
+                {loginBusy ? "Authenticating..." : "Access Vendor Portal"}
+              </button>
+              <div style={{ marginTop: "16px", textAlign: "center" }}>
+                <a href="/" style={{ color: "#78716c", fontSize: "12px", textDecoration: "none" }}>
+                  ← Return to Storefront
+                </a>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister} style={{ textAlign: "left" }}>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                  Business / Store Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                  value={registerForm.businessName}
+                  onChange={(e) => setRegisterForm({ ...registerForm, businessName: e.target.value })}
+                  placeholder="e.g. Acme Tech Innovations"
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                    Contact First Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                    value={registerForm.firstName}
+                    onChange={(e) => setRegisterForm({ ...registerForm, firstName: e.target.value })}
+                    placeholder="Alex"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                    Contact Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                    value={registerForm.lastName}
+                    onChange={(e) => setRegisterForm({ ...registerForm, lastName: e.target.value })}
+                    placeholder="Vance"
+                  />
+                </div>
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                  Seller Account Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                  value={registerForm.email}
+                  onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
+                  placeholder="seller@business.com"
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                    Password (min 8 chars) *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                    value={registerForm.password}
+                    onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                    Contact Phone (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px" }}
+                    value={registerForm.phone}
+                    onChange={(e) => setRegisterForm({ ...registerForm, phone: e.target.value })}
+                    placeholder="+1 555-0199"
+                  />
+                </div>
+              </div>
+              <div style={{ marginBottom: "14px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#44403c", marginBottom: "4px" }}>
+                  Nearest Fulfillment Warehouse Hub
+                </label>
+                <select
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px", fontSize: "13px", background: "#ffffff" }}
+                  value={registerForm.nearestWarehouseId}
+                  onChange={(e) => setRegisterForm({ ...registerForm, nearestWarehouseId: e.target.value })}
+                >
+                  <option value="">Select your regional fulfillment center...</option>
+                  {publicWarehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.city}, {w.countryCode}) - Code: {w.code}
+                    </option>
+                  ))}
+                </select>
+                <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#78716c" }}>
+                  Inventory will route to and ship from your selected regional fulfillment warehouse.
+                </p>
+              </div>
+
+              {registerError && (
+                <div style={{ padding: "10px 14px", borderRadius: "6px", fontSize: "12px", marginBottom: "14px", background: "#fee2e2", color: "#991b1b" }}>
+                  {registerError}
+                </div>
+              )}
+              <button
+                type="submit"
+                className="vendor-btn-primary"
+                style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: "13px" }}
+                disabled={registerBusy}
+              >
+                {registerBusy ? "Registering Business..." : "Register as Vendor & Launch Store"}
+              </button>
+              <div style={{ marginTop: "16px", textAlign: "center" }}>
+                <a href="/" style={{ color: "#78716c", fontSize: "12px", textDecoration: "none" }}>
+                  ← Return to Storefront
+                </a>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -1174,19 +1443,62 @@ export default function VendorPortal() {
                     </button>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "10px" }}>
                     {/* Angle 1 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 1: Front Hero *
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (Front View)"
-                        value={productForm.image1}
-                        onChange={(e) => setProductForm({ ...productForm, image1: e.target.value, imageUrl: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase" }}>
+                          Angle 1: Front Hero *
+                        </label>
+                        {productForm.image1 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image1: "", imageUrl: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image1}
+                          onChange={(e) => setProductForm({ ...productForm, image1: e.target.value, imageUrl: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 1 ? "#e7e5e4" : "#f5f5f4",
+                            border: "1px solid #d6d3d1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#44403c",
+                            cursor: uploadingAngle === 1 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 1 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 1}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(1, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image1 ? (
                           <ProductImg src={productForm.image1} alt="Front Hero" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 1"} />
@@ -1198,16 +1510,59 @@ export default function VendorPortal() {
 
                     {/* Angle 2 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 2: Side Profile
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (Side Profile)"
-                        value={productForm.image2}
-                        onChange={(e) => setProductForm({ ...productForm, image2: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase" }}>
+                          Angle 2: Side Profile
+                        </label>
+                        {productForm.image2 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image2: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image2}
+                          onChange={(e) => setProductForm({ ...productForm, image2: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 2 ? "#e7e5e4" : "#f5f5f4",
+                            border: "1px solid #d6d3d1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#44403c",
+                            cursor: uploadingAngle === 2 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 2 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 2}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(2, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image2 ? (
                           <ProductImg src={productForm.image2} alt="Side Profile" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 2"} />
@@ -1219,16 +1574,59 @@ export default function VendorPortal() {
 
                     {/* Angle 3 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 3: Lifestyle View
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (In Context)"
-                        value={productForm.image3}
-                        onChange={(e) => setProductForm({ ...productForm, image3: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase" }}>
+                          Angle 3: Lifestyle View
+                        </label>
+                        {productForm.image3 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image3: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image3}
+                          onChange={(e) => setProductForm({ ...productForm, image3: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 3 ? "#e7e5e4" : "#f5f5f4",
+                            border: "1px solid #d6d3d1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#44403c",
+                            cursor: uploadingAngle === 3 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 3 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 3}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(3, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image3 ? (
                           <ProductImg src={productForm.image3} alt="Lifestyle" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 3"} />
@@ -1240,16 +1638,59 @@ export default function VendorPortal() {
 
                     {/* Angle 4 */}
                     <div style={{ background: "#ffffff", padding: "10px", borderRadius: "6px", border: "1px solid #e7e5e4" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase", marginBottom: "4px" }}>
-                        Angle 4: Detail Macro
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://... (Macro Close-up)"
-                        value={productForm.image4}
-                        onChange={(e) => setProductForm({ ...productForm, image4: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
-                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#44403c", textTransform: "uppercase" }}>
+                          Angle 4: Detail Macro
+                        </label>
+                        {productForm.image4 && (
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, image4: "" }))}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="url"
+                          placeholder="Image URL or upload..."
+                          value={productForm.image4}
+                          onChange={(e) => setProductForm({ ...productForm, image4: e.target.value })}
+                          style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "6px 8px", border: "1px solid #d6d3d1", borderRadius: "4px" }}
+                        />
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "6px 8px",
+                            background: uploadingAngle === 4 ? "#e7e5e4" : "#f5f5f4",
+                            border: "1px solid #d6d3d1",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#44403c",
+                            cursor: uploadingAngle === 4 ? "wait" : "pointer",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <Upload size={12} />
+                          {uploadingAngle === 4 ? "..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            disabled={uploadingAngle === 4}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(4, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div style={{ marginTop: "6px", height: "65px", background: "#f5f5f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                         {productForm.image4 ? (
                           <ProductImg src={productForm.image4} alt="Detail Macro" style={{ width: "100%", height: "100%", objectFit: "contain" }} fallbackName={productForm.name || "Angle 4"} />

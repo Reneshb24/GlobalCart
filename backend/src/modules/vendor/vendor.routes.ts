@@ -22,13 +22,13 @@ const productCreateSchema = z.object({
   currency: z.string().trim().length(3).transform(v => v.toUpperCase()).default("USD"),
   categoryId: z.string().uuid(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).default("DRAFT"),
-  imageUrl: z.string().url().max(2000).or(z.literal("")).nullable().optional(),
+  imageUrl: z.string().max(10000000).or(z.literal("")).nullable().optional(),
   images: z.array(z.object({
-    url: z.string().url().max(2000),
+    url: z.string().max(10000000),
     altText: z.string().max(200).optional(),
     position: z.number().int().min(0).max(10).optional()
   })).optional(),
-  imageUrls: z.array(z.string().url().max(2000).or(z.literal(""))).optional(),
+  imageUrls: z.array(z.string().max(10000000).or(z.literal(""))).optional(),
   initialQuantity: z.number().int().min(0).max(1000000).optional(),
   warehouseId: z.string().uuid().nullable().optional()
 });
@@ -40,13 +40,13 @@ const productUpdateSchema = z.object({
   price: z.number().finite().min(0).max(9999999999).optional(),
   categoryId: z.string().uuid().optional(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
-  imageUrl: z.string().url().max(2000).or(z.literal("")).nullable().optional(),
+  imageUrl: z.string().max(10000000).or(z.literal("")).nullable().optional(),
   images: z.array(z.object({
-    url: z.string().url().max(2000),
+    url: z.string().max(10000000),
     altText: z.string().max(200).optional(),
     position: z.number().int().min(0).max(10).optional()
   })).optional(),
-  imageUrls: z.array(z.string().url().max(2000).or(z.literal(""))).optional(),
+  imageUrls: z.array(z.string().max(10000000).or(z.literal(""))).optional(),
   initialQuantity: z.number().int().min(0).max(1000000).optional(),
   warehouseId: z.string().uuid().nullable().optional()
 }).refine(val => Object.keys(val).length > 0, {
