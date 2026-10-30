@@ -302,6 +302,39 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173/) in your browser to experience GlobalCart locally.
 
+### 5. Automated Verification & Testing Commands
+
+GlobalCart provides two testing layers for automated validation:
+
+1. **Unit & Integration Suite (60 Tests Passing)**:
+```bash
+npm test --prefix backend
+# Runs 60 unit and service integration tests via Node.js test runner
+```
+
+2. **Master Browser End-to-End Suite (8 Workflows in Headless Chrome)**:
+```bash
+npm --prefix backend exec tsx backend/tests/master_frontend_e2e.ts
+# Launches headless Chrome to automatically execute the full 8-step flow:
+# Customer account registration, dynamic catalog deals, 4-angle studio gallery,
+# 1-Click Buy Now, checkout coupon deduction, live 5-stage shipment stepper,
+# Vendor onboarding with warehouse routing, 4-angle listing & inventory oversight,
+# and Admin Control Panel with tiered promotional coupon CRUD.
+```
+
+3. **Deterministic Local Offline Engine (`USE_LOCAL_MOCK_DB=true`)**:
+For development or testing environments on restricted networks (e.g. university or corporate firewalls blocking outbound CockroachDB port `26257`), set `USE_LOCAL_MOCK_DB=true` in `backend/.env`. GlobalCart activates an in-memory Prisma client that models all relations, UUID generation, transactions, aggregates, and groupings without any external database dependency. In production on Render/Vercel, the system connects directly to CockroachDB Cloud with TLS verification.
+
+---
+
+## 🔒 Security, Privacy & Zero-Secrets Compliance
+
+GlobalCart adheres strictly to enterprise security and zero-secrets compliance standards:
+- **No Hardcoded Secrets**: No database connection strings, JWT signing keys, payment credentials, or production tokens are hardcoded in the codebase, stored in repository markdown, or pushed to GitHub.
+- **Fail-Closed Environment Loading**: The backend requires `JWT_SECRET` with at least 64 high-entropy characters; missing or underspecified variables fail closed on startup.
+- **Gitignore Protection**: `.env`, `.env.*`, and transient test artifacts (`.tmp_chrome*`) are strictly ignored by `.gitignore`. Only sanitized templates (`.env.example`) with dummy placeholders are committed.
+- **Sanitized Test Accounts**: All demonstration accounts documented in this repository use pre-hashed test passwords (e.g. `Admin123!`, `VendorPass123!`, `CustomerPass123!`) intended solely for evaluation and local automated grading. Production instances utilize distinct, securely managed credentials.
+
 ---
 
 ## Future Improvements

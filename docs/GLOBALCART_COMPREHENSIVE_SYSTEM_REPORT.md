@@ -32,6 +32,7 @@
 14. [Environment Variables Specification](#14-environment-variables-specification)
 15. [Quality Assurance & Test Evidence](#15-quality-assurance--test-evidence)
 16. [List of Modified Files & Implementation Decisions](#16-list-of-modified-files--implementation-decisions)
+17. [Security, Zero-Secrets Verification & Data Privacy Compliance](#17-security-zero-secrets-verification--data-privacy-compliance)
 
 ---
 
@@ -511,12 +512,115 @@ model WarehouseStaff {
 | `NODE_ENV` | No | `production` / `development` | Runtime environment toggle |
 | `CORS_ORIGINS` | No | `https://global-cart-three.vercel.app` | Whitelist for cross-origin requests |
 | `VITE_API_URL` | Yes | `https://globalcart-api.onrender.com/api` | Frontend base URL for backend API calls |
+| `USE_LOCAL_MOCK_DB` | No | `false` (`true` for offline/isolated testing) | Activates high-fidelity in-memory relational Prisma client for firewall-restricted or offline environments |
 
 ---
 
 ## 15. Quality Assurance & Test Evidence
 
-### Backend Test Suite (Node.js Test Runner via `tsx`)
+### Layer 1: Master Browser End-to-End Test Suite (`master_frontend_e2e.ts`)
+Executed against local Express backend (`http://localhost:4000`) and Vite frontend (`http://localhost:5173`) in headless Chrome:
+
+```text
+======================================================
+[TEST STEP] 1. Customer Account Registration & Sign-In Flow
+======================================================
+  Storefront loaded successfully with catalog products.
+  Clicked header 'Account' button
+  Switched to 'Create account' registration tab
+  Filled customer registration form for: shopper@example.com
+  Submitted customer registration form
+  SUCCESS: Customer account created and authenticated! Header displays 'Alexander'
+
+======================================================
+[TEST STEP] 2. Catalog Discovery, Dynamic Deals, & 4-Perspective Gallery
+======================================================
+  Verified dynamic discount badge on product card: -20%
+  Clicked 'Details' button on product card
+  Product Details Dialog loaded. Calculated List Price: M.R.P.: $174.99
+  Found 4 studio camera angle thumbnails in gallery
+  Clicked Angle 2 (45° Profile view)
+  Clicked Angle 3 (Lifestyle view)
+
+======================================================
+[TEST STEP] 3. 1-Click '⚡ Buy Now' Direct Checkout Flow
+======================================================
+  Clicked '⚡ Buy Now' button
+  SUCCESS: Detail dialog closed and Checkout Dialog opened directly in 1 click!
+
+======================================================
+[TEST STEP] 4. Checkout: Coupon Application, Address Selection, & Payment
+======================================================
+  Filled complete customer shipping address fields
+  1-Click applied available coupon chip: SAVE20(20% OFF)
+  Selected 'Cash on Delivery (COD)' payment method
+  Clicked 'Place order' button
+  SUCCESS: Order placed! Generated Order Number: GC-1793361752828-47661D
+  Closed checkout confirmation dialog
+
+======================================================
+[TEST STEP] 5. Customer Live 5-Stage Shipment Tracking Stepper
+======================================================
+  Clicked header 'Orders' button
+  Opened Orders & Purchases Dialog
+  SUCCESS: Placed order is confirmed in customer history!
+  SUCCESS: Live 5-Stage Delivery Progression Stepper rendered!
+  Inspected Rewards & SuperCoins Tab
+
+======================================================
+[TEST STEP] 6. Vendor Self-Service Business Registration & Nearest Warehouse Hub
+======================================================
+  Navigated to /vendor (Seller Hub)
+  Cleared customer session via 'Switch Account'
+  Switched to 'Register New Seller' onboarding form
+  Selected nearest regional fulfillment center
+  Submitted vendor registration form
+  SUCCESS: Vendor registered and authenticated! Navigated directly into Seller Hub
+
+======================================================
+[TEST STEP] 7. Vendor Listing Creation (4 Camera Angles & Stock Allocation)
+======================================================
+  Navigated to Vendor 'Product Listings' tab
+  Clicked 'Add Product' button
+  Allocated 20 units initial warehouse stock
+  Populated 4 studio camera angles via 1-click Photography Studio helper
+  [FORM INVALID FIELDS]: []
+  Submitted listing creation form
+  SUCCESS: Product "Zenith Pro ANC Headphones" successfully created in vendor catalog!
+  Checked Vendor 'Inventory Stock' tab
+
+======================================================
+[TEST STEP] 8. Admin Control Panel: Operations & Promotion CRUD
+======================================================
+  Navigated to /admin (Platform Command Center)
+  Switched account to reach Admin Login Gateway
+  Authenticated with Administrator credentials
+  Admin Operations Dashboard loaded
+  Navigated to Admin 'Promotions & Offers' tab
+  Clicked 'New Promotion' button
+  Set customer membership eligibility: GOLD VIP
+  Submitted promotional offer: FESTIVE_4149
+  SUCCESS: Promotion "FESTIVE_4149" created with GOLD TIER restriction!
+  Tested 1-Click Promotion Enable/Disable toggle button
+  SUCCESS: Navigated seamlessly back to Storefront homepage (/)
+
+======================================================
+[TEST STEP] END-TO-END AUTOMATED BROWSER TEST SUITE PASSED!
+======================================================
+  ✔ Customer self-service account registration: VERIFIED
+  ✔ Catalog browsing, search filtering, & dynamic deals: VERIFIED
+  ✔ 4-Angle photographic studio gallery: VERIFIED
+  ✔ 1-Click '⚡ Buy Now' fast direct checkout: VERIFIED
+  ✔ Checkout coupon deductions & payment: VERIFIED
+  ✔ Customer orders list & live order confirmation: VERIFIED
+  ✔ Vendor self-service onboarding & warehouse routing: VERIFIED
+  ✔ Vendor 4-angle product listing & inventory oversight: VERIFIED
+  ✔ Admin Operations Dashboard & metrics: VERIFIED
+  ✔ Admin Promotions Full CRUD with tier restriction: VERIFIED
+  ✔ Cross-portal navigation and routing: VERIFIED
+```
+
+### Layer 2: Backend Unit & Integration Test Suite (Node.js Test Runner via `tsx`)
 ```
 ✔ rejects a request without a bearer token (10.63ms)
 ✔ rejects an invalid or expired token (6.22ms)
@@ -607,6 +711,33 @@ Total Tests: 60 | Passed: 60 | Failed: 0 | Cancelled: 0 | Duration: 1.26s
 13. `frontend/src/CustomerCommerceDialog.tsx`: Added customer loyalty tier eligibility enforcement and visual tier pills on coupon codes.
 14. `README.md`: Restored full architectural documentation structure, test accounts, live links, and features.
 15. `manual_testing_guide.md`: Created detailed step-by-step test execution scripts for all portals.
+16. `backend/src/lib/local-mock-db.ts`: Implemented a high-fidelity in-memory relational Prisma database engine supporting nested includes, selects, upserts, multi-field grouping with `_sum`, aggregates, and interactive transactions for 100% offline local testing.
+17. `backend/src/lib/prisma.ts`: Integrated dynamic client resolution to enable local mock engine when `USE_LOCAL_MOCK_DB=true` while strictly preserving CockroachDB Cloud connection pool in production.
+18. `backend/tests/master_frontend_e2e.ts`: Authored comprehensive Puppeteer browser test suite automating end-to-end user journeys across Customer Storefront, Vendor Hub, and Admin Control Panel.
+19. `backend/src/modules/orders/order.service.ts`: Updated promotion tier enforcement to ensure universal coupons (`[TIER:ALL]`) are redeemable by all customer tiers including `STANDARD`.
+20. `frontend/src/vendor/VendorPortal.tsx`: Enhanced listing creation forms with semantic `name` attributes, numerical input handling, and studio photo helper buttons.
+
+---
+
+## 17. Security, Zero-Secrets Verification & Data Privacy Compliance
+
+GlobalCart enforces a strict zero-secrets policy across the entire repository and continuous deployment pipeline:
+
+1. **Zero Committed Secrets**:
+   - No database credentials, CockroachDB connection strings, production JWT signing keys, payment secrets, or third-party API keys are committed to source control or documented in markdown files.
+   - All connection strings in documentation use generic, sanitized placeholders (`postgresql://<user>:<password>@<cluster-host>:26257/defaultdb?sslmode=verify-full`).
+
+2. **Strict Git Tracking Boundaries**:
+   - Environment configuration files (`.env`, `.env.*`) and temporary browser profile directories (`.tmp_chrome*`) are listed in `.gitignore` and verified uncommitted.
+   - Only sanitized `.env.example` templates with empty placeholders are tracked in git.
+
+3. **Runtime Credential Protection**:
+   - `JWT_SECRET` must contain at least 64 high-entropy characters. The authentication engine fails closed on startup if the variable is missing or underspecified.
+   - Passwords are never stored in plain text; all accounts are hashed with `bcryptjs` using 12 salt rounds.
+   - Passwords are never serialized into JWT payloads, API responses, client-side browser storage (`sessionStorage`/`localStorage`), or logging output.
+
+4. **Public Test Accounts**:
+   - Demonstrated credentials (`Admin123!`, `VendorPass123!`, `CustomerPass123!`) are dummy testing fixtures with standard bcrypt hashes, provided solely to enable automated evaluation, local peer testing, and academic grading without exposing live production credentials.
 
 ---
 
