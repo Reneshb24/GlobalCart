@@ -641,7 +641,7 @@ Total Tests: 60 | Passed: 60 | Failed: 0 | Cancelled: 0 | Duration: 1.26s
 
 ---
 
-## 16. List of Modified Files & Implementation Decisions
+## 15. List of Modified Files & Implementation Decisions
 
 1. `backend/src/modules/orders/order.service.ts`: Fixed string-to-number loyalty discount return value to prevent UI `TypeError`.
 2. `frontend/src/CustomerCommerceDialog.tsx`: Added `Number(discountAmount || 0).toFixed(2)` defensive parsing and broadened loyalty interface type.
