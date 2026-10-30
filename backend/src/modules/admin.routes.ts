@@ -1339,21 +1339,30 @@ adminRouter.post("/returns/:returnId/refund", async (req, res) => {
 const offerCreateSchema = z.object({
   code: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/)
     .transform(value => value.toUpperCase()),
-  name: z.string().trim().min(2).max(120),
+  name: z.string().trim().min(2).max(120).optional(),
+  title: z.string().trim().min(2).max(120).optional(),
   description: z.string().trim().max(1000).optional(),
   discountPercent: z.number().positive().max(100).optional(),
   discountAmount: z.number().positive().max(100000000).optional(),
+  discountType: z.enum(["PERCENTAGE", "FIXED_AMOUNT"]).optional(),
+  discountValue: z.number().positive().optional(),
+  eligibleTier: z.enum(["ALL", "BRONZE", "SILVER", "GOLD", "PLATINUM"]).optional(),
   currency: z.string().trim().length(3).transform(value => value.toUpperCase()).optional(),
-  startsAt: z.coerce.date(),
-  endsAt: z.coerce.date(),
-  productId: z.string().uuid().optional(),
-  categoryId: z.string().uuid().optional()
-}).strict().refine(
-  data => (data.discountPercent !== undefined) !== (data.discountAmount !== undefined),
-  { message: "Provide exactly one of discountPercent or discountAmount" }
+  startsAt: z.coerce.date().optional(),
+  endsAt: z.coerce.date().optional(),
+  productId: z.string().uuid().nullable().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+  status: z.enum(["DRAFT", "ACTIVE", "DISABLED", "EXPIRED"]).optional()
+}).refine(
+  data => Boolean(data.name || data.title),
+  { message: "Either name or title is required", path: ["name"] }
 ).refine(
-  data => data.endsAt > data.startsAt,
-  { message: "endsAt must be later than startsAt", path: ["endsAt"] }
+  data => {
+    const hasExplicit = data.discountPercent !== undefined || data.discountAmount !== undefined;
+    const hasTypeVal = data.discountType !== undefined && data.discountValue !== undefined;
+    return hasExplicit || hasTypeVal;
+  },
+  { message: "Provide either discountPercent, discountAmount, or discountType + discountValue" }
 ).refine(
   data => !(data.productId && data.categoryId),
   { message: "Target either a product or a category, not both" }
@@ -1361,15 +1370,20 @@ const offerCreateSchema = z.object({
 
 const offerUpdateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
+  title: z.string().trim().min(2).max(120).optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   discountPercent: z.number().positive().max(100).nullable().optional(),
   discountAmount: z.number().positive().max(100000000).nullable().optional(),
+  discountType: z.enum(["PERCENTAGE", "FIXED_AMOUNT"]).optional(),
+  discountValue: z.number().positive().optional(),
+  eligibleTier: z.enum(["ALL", "BRONZE", "SILVER", "GOLD", "PLATINUM"]).optional(),
   currency: z.string().trim().length(3).transform(value => value.toUpperCase()).optional(),
   startsAt: z.coerce.date().optional(),
   endsAt: z.coerce.date().optional(),
   productId: z.string().uuid().nullable().optional(),
-  categoryId: z.string().uuid().nullable().optional()
-}).strict().refine(data => Object.keys(data).length > 0, {
+  categoryId: z.string().uuid().nullable().optional(),
+  status: z.enum(["DRAFT", "ACTIVE", "DISABLED", "EXPIRED"]).optional()
+}).refine(data => Object.keys(data).length > 0, {
   message: "At least one field is required"
 }).refine(
   data => !(data.productId && data.categoryId),
@@ -1391,7 +1405,7 @@ adminRouter.get("/offers", async (req, res) => {
   }
 
   try {
-    const offers = await prisma.offer.findMany({
+    const rawOffers = await prisma.offer.findMany({
       where: parsed.data.status ? { status: parsed.data.status } : undefined,
       include: {
         product: { select: { id: true, name: true, slug: true } },
@@ -1399,6 +1413,24 @@ adminRouter.get("/offers", async (req, res) => {
       },
       orderBy: { createdAt: "desc" }
     });
+
+    const offers = rawOffers.map(offer => {
+      let eligibleTier = "ALL";
+      let cleanDescription = offer.description || "";
+      if (offer.description && offer.description.includes("[TIER:")) {
+        const match = offer.description.match(/\[TIER:([A-Za-z0-9_,]+)\]/);
+        if (match) {
+          eligibleTier = match[1].trim();
+          cleanDescription = offer.description.replace(/\[TIER:[^\]]+\]/g, "").trim();
+        }
+      }
+      return {
+        ...offer,
+        eligibleTier,
+        cleanDescription: cleanDescription || offer.description
+      };
+    });
+
     res.json({ offers, count: offers.length });
   } catch (error) {
     handleWriteError(res, error);
@@ -1414,19 +1446,43 @@ adminRouter.post("/offers", async (req, res) => {
 
   try {
     const data = parsed.data;
+    const name = data.name || data.title || "Special Promotion";
+
+    let discountPercent = data.discountPercent;
+    let discountAmount = data.discountAmount;
+
+    if (data.discountType === "PERCENTAGE" && data.discountValue !== undefined) {
+      discountPercent = data.discountValue;
+      discountAmount = undefined;
+    } else if (data.discountType === "FIXED_AMOUNT" && data.discountValue !== undefined) {
+      discountAmount = data.discountValue;
+      discountPercent = undefined;
+    }
+
+    let description = data.description || "";
+    if (data.eligibleTier && data.eligibleTier !== "ALL") {
+      if (!description.includes("[TIER:")) {
+        description = description ? `${description} [TIER:${data.eligibleTier}]` : `[TIER:${data.eligibleTier}]`;
+      }
+    }
+
+    const now = new Date();
+    const startsAt = data.startsAt || now;
+    const endsAt = data.endsAt || new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
     const offer = await prisma.offer.create({
       data: {
         code: data.code,
-        name: data.name,
-        description: data.description,
-        discountPercent: data.discountPercent,
-        discountAmount: data.discountAmount,
+        name,
+        description: description || null,
+        discountPercent: discountPercent ?? null,
+        discountAmount: discountAmount ?? null,
         currency: data.currency ?? "USD",
-        startsAt: data.startsAt,
-        endsAt: data.endsAt,
-        productId: data.productId,
-        categoryId: data.categoryId,
-        status: "DRAFT"
+        startsAt,
+        endsAt,
+        productId: data.productId || null,
+        categoryId: data.categoryId || null,
+        status: data.status || "ACTIVE"
       }
     });
     res.status(201).json({ offer });
@@ -1458,22 +1514,26 @@ adminRouter.patch("/offers/:offerId", async (req, res) => {
     }
 
     const data = parsed.data;
-    const percent = data.discountPercent === undefined
-      ? current.discountPercent === null ? undefined : Number(current.discountPercent)
-      : data.discountPercent;
-    const amount = data.discountAmount === undefined
-      ? current.discountAmount === null ? undefined : Number(current.discountAmount)
-      : data.discountAmount;
+    const name = data.name || data.title || current.name;
 
-    if ((percent !== undefined && percent !== null) &&
-        (amount !== undefined && amount !== null)) {
-      res.status(400).json({ error: "An offer cannot have both discount types" });
-      return;
+    let discountPercent = data.discountPercent;
+    let discountAmount = data.discountAmount;
+
+    if (data.discountType === "PERCENTAGE" && data.discountValue !== undefined) {
+      discountPercent = data.discountValue;
+      discountAmount = null;
+    } else if (data.discountType === "FIXED_AMOUNT" && data.discountValue !== undefined) {
+      discountAmount = data.discountValue;
+      discountPercent = null;
     }
-    if ((percent === undefined || percent === null) &&
-        (amount === undefined || amount === null)) {
-      res.status(400).json({ error: "An offer must retain one discount type" });
-      return;
+
+    let description = data.description !== undefined ? (data.description || "") : (current.description || "");
+    if (data.eligibleTier) {
+      // Remove any existing tier tag
+      description = description.replace(/\[TIER:[^\]]+\]/g, "").trim();
+      if (data.eligibleTier !== "ALL") {
+        description = description ? `${description} [TIER:${data.eligibleTier}]` : `[TIER:${data.eligibleTier}]`;
+      }
     }
 
     const startsAt = data.startsAt ?? current.startsAt;
@@ -1483,24 +1543,44 @@ adminRouter.patch("/offers/:offerId", async (req, res) => {
       return;
     }
 
-    if (data.productId && data.categoryId) {
-      res.status(400).json({ error: "Target either a product or a category, not both" });
-      return;
-    }
-
     const offer = await prisma.offer.update({
       where: { id: offerId },
       data: {
-        ...data,
-        ...(data.discountPercent !== undefined && data.discountPercent !== null
-          ? { discountAmount: null }
-          : {}),
-        ...(data.discountAmount !== undefined && data.discountAmount !== null
-          ? { discountPercent: null }
-          : {})
+        name,
+        description: description || null,
+        ...(discountPercent !== undefined ? { discountPercent, discountAmount: null } : {}),
+        ...(discountAmount !== undefined ? { discountAmount, discountPercent: null } : {}),
+        ...(data.startsAt ? { startsAt: data.startsAt } : {}),
+        ...(data.endsAt ? { endsAt: data.endsAt } : {}),
+        ...(data.status ? { status: data.status } : {}),
+        ...(data.productId !== undefined ? { productId: data.productId } : {}),
+        ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {})
       }
     });
     res.json({ offer });
+  } catch (error) {
+    handleWriteError(res, error);
+  }
+});
+
+adminRouter.delete("/offers/:offerId", async (req, res) => {
+  const rawId = req.params.offerId;
+  const offerId = Array.isArray(rawId) ? rawId[0] : rawId;
+
+  if (!uuidSchema.safeParse(offerId).success) {
+    res.status(400).json({ error: "Invalid offer ID" });
+    return;
+  }
+
+  try {
+    const current = await prisma.offer.findUnique({ where: { id: offerId } });
+    if (!current) {
+      res.status(404).json({ error: "Offer not found" });
+      return;
+    }
+
+    await prisma.offer.delete({ where: { id: offerId } });
+    res.json({ success: true, message: `Promotion "${current.code}" deleted successfully.` });
   } catch (error) {
     handleWriteError(res, error);
   }

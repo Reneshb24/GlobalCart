@@ -3,6 +3,7 @@ import { ArrowLeft, Heart, Minus, Plus, ShoppingBag, Star, X, Zap, ShieldCheck, 
 import { api, getApiErrorMessage, getAuthToken } from "./lib/api";
 import ProductImg from "./ProductImg";
 import { getProductGallery } from "./lib/productImages";
+import { getProductDiscount, type OfferMatch } from "./lib/discounts";
 
 type ProductDetails = {
   id: string;
@@ -37,6 +38,7 @@ type ReviewsResponse = {
 type Props = {
   slug: string;
   savedProductIds: string[];
+  activeOffers?: OfferMatch[];
   onClose: () => void;
   onAddToCart: (product: ProductDetails, quantity: number) => void;
   onBuyNow?: (product: ProductDetails, quantity: number) => void;
@@ -54,6 +56,7 @@ function formatPrice(price: string | number, currency: string) {
 export default function ProductDetailsDialog({
   slug,
   savedProductIds,
+  activeOffers,
   onClose,
   onAddToCart,
   onBuyNow,
@@ -160,6 +163,7 @@ export default function ProductDetailsDialog({
   const gallery = product ? getProductGallery(product) : [];
   const activeImage = gallery[selectedImage] || gallery[0];
   const saved = product ? savedProductIds.includes(product.id) : false;
+  const discountInfo = product ? getProductDiscount(product, activeOffers) : null;
 
   return (
     <div className="product-detail-backdrop" onMouseDown={(event) => {
@@ -235,23 +239,28 @@ export default function ProductDetailsDialog({
                   </div>
                 )}
 
-                {/* Amazon / Flipkart Price & Deal Block */}
-                <div style={{ margin: "10px 0 6px" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "14px", color: "#dc2626", fontWeight: 700 }}>
-                      -20%
-                    </span>
-                    <span style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
-                      {formatPrice(product.price, product.currency)}
-                    </span>
-                    <span style={{ fontSize: "13px", color: "#64748b", textDecoration: "line-through" }}>
-                      M.R.P.: {formatPrice(Number(product.price) * 1.25, product.currency)}
-                    </span>
+                {/* Amazon / Flipkart Dynamic Price & Deal Block */}
+                {discountInfo && (
+                  <div style={{ margin: "10px 0 6px" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "14px", color: "#dc2626", fontWeight: 700, background: "#fee2e2", padding: "2px 8px", borderRadius: "4px" }}>
+                        -{discountInfo.discountPercent}% OFF
+                      </span>
+                      <span style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
+                        {formatPrice(product.price, product.currency)}
+                      </span>
+                      <span style={{ fontSize: "13px", color: "#64748b", textDecoration: "line-through" }}>
+                        M.R.P.: {formatPrice(discountInfo.originalPrice, product.currency)}
+                      </span>
+                      <span style={{ fontSize: "11px", background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                        ⚡ {discountInfo.dealLabel}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#166534", fontWeight: 600, marginTop: "4px" }}>
+                      Inclusive of all taxes · Save {formatPrice(discountInfo.originalPrice - Number(product.price), product.currency)} ({discountInfo.discountPercent}% festival savings)
+                    </div>
                   </div>
-                  <div style={{ fontSize: "12px", color: "#166534", fontWeight: 600, marginTop: "2px" }}>
-                    Inclusive of all taxes · Lowest price in 30 days
-                  </div>
-                </div>
+                )}
 
                 <p className="product-detail-description">
                   {product.description || "A thoughtful pick for everyday living."}

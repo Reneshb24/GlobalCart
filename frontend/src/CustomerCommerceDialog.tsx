@@ -50,6 +50,7 @@ type Offer = {
   startsAt: string;
   endsAt: string;
   status: string;
+  eligibleTier?: string;
   productId?: string | null;
   categoryId?: string | null;
   product?: { id: string; name: string; slug: string } | null;
@@ -266,6 +267,25 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
         const hasCategory = cart.items.some((i) => i.product.categoryId === offer.categoryId);
         if (!hasCategory) {
           setCouponError(`This coupon is only valid for "${offer.category?.name || "a specific category"}".`);
+          setCouponApplying(false);
+          return;
+        }
+      }
+
+      // Validate customer membership tier eligibility
+      if (offer.eligibleTier && offer.eligibleTier !== "ALL") {
+        const tierRanks: Record<string, number> = {
+          STANDARD: 0,
+          BRONZE: 1,
+          SILVER: 2,
+          GOLD: 3,
+          PLATINUM: 4
+        };
+        const userTier = (loyaltyAccount?.tier || "STANDARD").toUpperCase();
+        const userRank = tierRanks[userTier] ?? 0;
+        const requiredRank = tierRanks[offer.eligibleTier.toUpperCase()] ?? 1;
+        if (userRank < requiredRank) {
+          setCouponError(`Exclusive Coupon: "${code}" is reserved for ${offer.eligibleTier} tier members and above. Your current tier is ${userTier}.`);
           setCouponApplying(false);
           return;
         }
@@ -1437,6 +1457,11 @@ export default function CustomerCommerceDialog({ mode, onClose, onCompleted }: P
                               <span style={{ fontSize: "11px", color: isApplied ? "#15803d" : "#64748b", fontWeight: 500 }}>
                                 ({getOfferBadgeText(offer)})
                               </span>
+                              {offer.eligibleTier && offer.eligibleTier !== "ALL" && (
+                                <span style={{ fontSize: "10px", padding: "1px 5px", borderRadius: "3px", background: "#fef3c7", color: "#92400e", fontWeight: 700 }}>
+                                  {offer.eligibleTier}
+                                </span>
+                              )}
                               {isApplied && <span style={{ fontWeight: 800 }}>✓</span>}
                             </button>
                           );

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Tags, Warehouse, RotateCcw,
   Star, Tag, Users, CreditCard, ArrowLeft, LogOut, Plus,
   RefreshCw, CheckCircle, XCircle, AlertTriangle, Truck, Eye, ShieldCheck, X,
-  Store, Camera, Upload
+  Store, Camera, Upload, Edit, Trash2, Power
 } from "lucide-react";
 import { api, clearAuthToken, getApiErrorMessage, getAuthToken, setAuthToken } from "../lib/api";
 import ProductImg from "../ProductImg";
@@ -169,12 +169,24 @@ type AdminReview = {
 type AdminOffer = {
   id: string;
   code: string;
-  title: string;
-  discountType: string;
-  discountValue: number;
-  minOrderSubtotal: number;
+  name?: string;
+  title?: string;
+  description?: string | null;
+  cleanDescription?: string;
+  discountType?: string;
+  discountValue?: number;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
+  minOrderSubtotal?: number;
   maxDiscountAmount?: number | null;
+  eligibleTier?: string;
   status: string;
+  startsAt?: string;
+  endsAt?: string;
+  productId?: string | null;
+  categoryId?: string | null;
+  product?: { id: string; name: string; slug: string } | null;
+  category?: { id: string; name: string; slug: string } | null;
 };
 
 type AdminCustomer = {
@@ -345,6 +357,7 @@ export default function AdminPortal() {
 
   const [offers, setOffers] = useState<AdminOffer[]>([]);
   const [showOfferModal, setShowOfferModal] = useState(false);
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [offerForm, setOfferForm] = useState({
     code: "",
     title: "",
@@ -352,7 +365,9 @@ export default function AdminPortal() {
     discountValue: 10,
     minOrderSubtotal: 0,
     maxDiscountAmount: 50,
-    status: "ACTIVE"
+    eligibleTier: "ALL",
+    status: "ACTIVE",
+    categoryId: ""
   });
 
   const [customers, setCustomers] = useState<AdminCustomer[]>([]);
@@ -837,24 +852,92 @@ export default function AdminPortal() {
     }
   }
 
-  // Create Offer
-  async function handleCreateOffer(e: React.FormEvent) {
+  function openCreateOfferModal() {
+    setEditingOfferId(null);
+    setOfferForm({
+      code: "",
+      title: "",
+      discountType: "PERCENTAGE",
+      discountValue: 10,
+      minOrderSubtotal: 0,
+      maxDiscountAmount: 50,
+      eligibleTier: "ALL",
+      status: "ACTIVE",
+      categoryId: ""
+    });
+    setShowOfferModal(true);
+  }
+
+  function openEditOfferModal(off: AdminOffer) {
+    setEditingOfferId(off.id);
+    const discType = off.discountPercent != null ? "PERCENTAGE" : (off.discountAmount != null ? "FIXED_AMOUNT" : off.discountType || "PERCENTAGE");
+    const discVal = off.discountPercent != null ? off.discountPercent : (off.discountAmount != null ? Number(off.discountAmount) : off.discountValue || 10);
+    setOfferForm({
+      code: off.code,
+      title: off.name || off.title || "",
+      discountType: discType,
+      discountValue: discVal,
+      minOrderSubtotal: off.minOrderSubtotal ? Number(off.minOrderSubtotal) : 0,
+      maxDiscountAmount: off.maxDiscountAmount ? Number(off.maxDiscountAmount) : 50,
+      eligibleTier: off.eligibleTier || "ALL",
+      status: off.status,
+      categoryId: off.categoryId || ""
+    });
+    setShowOfferModal(true);
+  }
+
+  async function handleToggleOfferStatus(offer: AdminOffer) {
+    const newStatus = offer.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
+    try {
+      await api.patch(`/admin/offers/${offer.id}/status`, { status: newStatus });
+      setFeedback({ type: "success", text: `Promotion "${offer.code}" status changed to ${newStatus}.` });
+      void loadOffers();
+    } catch (err) {
+      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to toggle promotion status.") });
+    }
+  }
+
+  async function handleDeleteOffer(offer: AdminOffer) {
+    if (!window.confirm(`Are you sure you want to permanently delete coupon "${offer.code}"?`)) return;
+    try {
+      await api.delete(`/admin/offers/${offer.id}`);
+      setFeedback({ type: "success", text: `Promotion "${offer.code}" deleted successfully.` });
+      void loadOffers();
+    } catch (err) {
+      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to delete promotion.") });
+    }
+  }
+
+  async function handleSaveOffer(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await api.post("/admin/offers", {
+      const payload: Record<string, any> = {
         code: offerForm.code.trim().toUpperCase(),
         title: offerForm.title,
+        name: offerForm.title,
         discountType: offerForm.discountType,
         discountValue: Number(offerForm.discountValue),
-        minOrderSubtotal: Number(offerForm.minOrderSubtotal),
-        maxDiscountAmount: offerForm.maxDiscountAmount ? Number(offerForm.maxDiscountAmount) : null,
-        status: offerForm.status
-      });
-      setFeedback({ type: "success", text: "Promotion created successfully." });
+        eligibleTier: offerForm.eligibleTier,
+        status: offerForm.status,
+        categoryId: offerForm.categoryId ? offerForm.categoryId : undefined
+      };
+      if (offerForm.discountType === "PERCENTAGE") {
+        payload.discountPercent = Number(offerForm.discountValue);
+      } else {
+        payload.discountAmount = Number(offerForm.discountValue);
+      }
+
+      if (editingOfferId) {
+        await api.patch(`/admin/offers/${editingOfferId}`, payload);
+        setFeedback({ type: "success", text: `Promotion "${offerForm.code}" updated successfully.` });
+      } else {
+        await api.post("/admin/offers", payload);
+        setFeedback({ type: "success", text: `Promotion "${offerForm.code}" created successfully.` });
+      }
       setShowOfferModal(false);
       void loadOffers();
     } catch (err) {
-      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to create offer.") });
+      setFeedback({ type: "error", text: getApiErrorMessage(err, "Failed to save promotion.") });
     }
   }
 
@@ -1810,7 +1893,7 @@ export default function AdminPortal() {
                   <div className="admin-card-tools">
                     <button
                       className="admin-btn-primary"
-                      onClick={() => setShowOfferModal(true)}
+                      onClick={openCreateOfferModal}
                     >
                       <Plus size={14} /> New Promotion
                     </button>
@@ -1821,30 +1904,76 @@ export default function AdminPortal() {
                     <thead>
                       <tr>
                         <th>Promo Code</th>
-                        <th>Title</th>
-                        <th>Discount Type</th>
+                        <th>Campaign Title</th>
                         <th>Discount Value</th>
-                        <th>Min Order Subtotal</th>
+                        <th>Target Member Tier</th>
+                        <th>Scope</th>
                         <th>Status</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {offers.length === 0 ? (
-                        <tr><td colSpan={6} className="admin-empty">No active promotions.</td></tr>
+                        <tr><td colSpan={7} className="admin-empty">No active promotions.</td></tr>
                       ) : (
                         offers.map((off) => (
                           <tr key={off.id}>
                             <td><code>{off.code}</code></td>
-                            <td><strong>{off.title}</strong></td>
-                            <td>{off.discountType}</td>
+                            <td><strong>{off.name || off.title || "Special Promotion"}</strong></td>
                             <td>
-                              {off.discountType === "PERCENTAGE" ? `${off.discountValue}%` : `$${off.discountValue}`}
+                              <span style={{ fontWeight: 600, color: "#166534" }}>
+                                {off.discountPercent != null
+                                  ? `${off.discountPercent}% OFF`
+                                  : (off.discountAmount != null
+                                    ? `$${Number(off.discountAmount).toFixed(2)} OFF`
+                                    : `${off.discountValue || 0}% OFF`)}
+                              </span>
                             </td>
-                            <td>${Number(off.minOrderSubtotal).toFixed(2)}</td>
+                            <td>
+                              <span className={`admin-badge badge-${(off.eligibleTier || "ALL").toLowerCase()}`}>
+                                {off.eligibleTier && off.eligibleTier !== "ALL"
+                                  ? `${off.eligibleTier} TIER`
+                                  : "ALL CUSTOMERS"}
+                              </span>
+                            </td>
+                            <td>
+                              <small style={{ color: "#64748b" }}>
+                                {off.product
+                                  ? `Product: ${off.product.name}`
+                                  : (off.category
+                                    ? `Category: ${off.category.name}`
+                                    : "Storewide Deal")}
+                              </small>
+                            </td>
                             <td>
                               <span className={`admin-badge badge-${off.status.toLowerCase()}`}>
                                 {off.status}
                               </span>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                <button
+                                  className="admin-btn-secondary admin-btn-sm"
+                                  onClick={() => void handleToggleOfferStatus(off)}
+                                  title={off.status === "ACTIVE" ? "Disable promo code" : "Enable promo code"}
+                                >
+                                  <Power size={12} /> {off.status === "ACTIVE" ? "Disable" : "Enable"}
+                                </button>
+                                <button
+                                  className="admin-btn-secondary admin-btn-sm"
+                                  onClick={() => openEditOfferModal(off)}
+                                  title="Edit promotion details"
+                                >
+                                  <Edit size={12} /> Edit
+                                </button>
+                                <button
+                                  className="admin-btn-danger admin-btn-sm"
+                                  onClick={() => void handleDeleteOffer(off)}
+                                  title="Permanently remove promo"
+                                >
+                                  <Trash2 size={12} /> Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -3013,33 +3142,34 @@ export default function AdminPortal() {
         </div>
       )}
 
-      {/* CREATE OFFER MODAL */}
+      {/* CREATE / EDIT OFFER MODAL */}
       {showOfferModal && (
         <div className="admin-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowOfferModal(false); }}>
           <div className="admin-modal">
             <div className="admin-modal-header">
-              <h2>Create Promotional Offer</h2>
+              <h2>{editingOfferId ? "Edit Promotional Offer & Coupon" : "Create Promotional Offer & Coupon"}</h2>
               <button className="admin-btn-secondary admin-btn-sm" onClick={() => setShowOfferModal(false)}>
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleCreateOffer}>
+            <form onSubmit={handleSaveOffer}>
               <div className="admin-modal-body">
                 <div className="admin-form-row">
                   <div className="admin-form-group">
                     <label>Promo Code</label>
                     <input
                       required
-                      placeholder="SUMMER25"
+                      placeholder="DIWALI25"
                       value={offerForm.code}
+                      disabled={Boolean(editingOfferId)}
                       onChange={(e) => setOfferForm({ ...offerForm, code: e.target.value.toUpperCase() })}
                     />
                   </div>
                   <div className="admin-form-group">
-                    <label>Title</label>
+                    <label>Campaign / Festival Title</label>
                     <input
                       required
-                      placeholder="Summer Savings 25% Off"
+                      placeholder="Diwali Grand Festival Deal 25% Off"
                       value={offerForm.title}
                       onChange={(e) => setOfferForm({ ...offerForm, title: e.target.value })}
                     />
@@ -3052,12 +3182,12 @@ export default function AdminPortal() {
                       value={offerForm.discountType}
                       onChange={(e) => setOfferForm({ ...offerForm, discountType: e.target.value })}
                     >
-                      <option value="PERCENTAGE">PERCENTAGE</option>
+                      <option value="PERCENTAGE">PERCENTAGE (%)</option>
                       <option value="FIXED_AMOUNT">FIXED AMOUNT ($)</option>
                     </select>
                   </div>
                   <div className="admin-form-group">
-                    <label>Discount Value</label>
+                    <label>{offerForm.discountType === "PERCENTAGE" ? "Discount Percentage (%)" : "Discount Amount ($)"}</label>
                     <input
                       type="number"
                       step="0.01"
@@ -3065,6 +3195,33 @@ export default function AdminPortal() {
                       value={offerForm.discountValue}
                       onChange={(e) => setOfferForm({ ...offerForm, discountValue: parseFloat(e.target.value) || 0 })}
                     />
+                  </div>
+                </div>
+                <div className="admin-form-row">
+                  <div className="admin-form-group">
+                    <label>Target Member Eligibility</label>
+                    <select
+                      value={offerForm.eligibleTier}
+                      onChange={(e) => setOfferForm({ ...offerForm, eligibleTier: e.target.value })}
+                    >
+                      <option value="ALL">All Customers (Universal)</option>
+                      <option value="BRONZE">Bronze Tier & Above</option>
+                      <option value="SILVER">Silver Tier & Above</option>
+                      <option value="GOLD">Gold VIP & Above</option>
+                      <option value="PLATINUM">Platinum Tier Exclusive</option>
+                    </select>
+                  </div>
+                  <div className="admin-form-group">
+                    <label>Campaign Scope</label>
+                    <select
+                      value={offerForm.categoryId}
+                      onChange={(e) => setOfferForm({ ...offerForm, categoryId: e.target.value })}
+                    >
+                      <option value="">Storewide Festival Promotion (All Items)</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>Category: {c.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="admin-form-row">
@@ -3083,9 +3240,9 @@ export default function AdminPortal() {
                       value={offerForm.status}
                       onChange={(e) => setOfferForm({ ...offerForm, status: e.target.value })}
                     >
-                      <option value="ACTIVE">ACTIVE</option>
-                      <option value="DRAFT">DRAFT</option>
-                      <option value="DISABLED">DISABLED</option>
+                      <option value="ACTIVE">ACTIVE (Live in Store)</option>
+                      <option value="DISABLED">DISABLED (Hidden/Inactive)</option>
+                      <option value="DRAFT">DRAFT (Testing only)</option>
                     </select>
                   </div>
                 </div>
@@ -3095,7 +3252,7 @@ export default function AdminPortal() {
                   Cancel
                 </button>
                 <button type="submit" className="admin-btn-primary">
-                  Launch Promo
+                  {editingOfferId ? "Update Promotion" : "Launch Promotion"}
                 </button>
               </div>
             </form>

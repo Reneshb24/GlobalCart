@@ -226,9 +226,32 @@ PREPARING ───> DISPATCHED ───> IN_TRANSIT ───> OUT_FOR_DELIVER
 - Interactive progression in the Admin Panel (`handleProgressShipment`) advances milestones.
 - Customer-facing visual delivery tracker renders active stage highlights, checkmarks, carrier info, and tracking code.
 
-### 5. SuperCoins & Coupon Discount Engine
-- Fixed or percentage coupon codes (`SAVE10`, `TECH20`, `WELCOME50`) are validated against order subtotals.
-- SuperCoins are earned on delivered purchases and can be redeemed at checkout ($100 \text{ pts} = \$1.00$).
+### 5. Dynamic Festival Pricing & Realistic M.R.P. Engine
+- Located in `discounts.ts` and rendered across `App.tsx` and `ProductDetailsDialog.tsx`.
+- Eliminates hardcoded static discounts (e.g. static -20% and fixed 1.25 multiplier).
+- Evaluates active database offers hierarchically:
+  1. Product-specific promotion.
+  2. Category-specific promotion.
+  3. Storewide festival promotion (e.g., `DIWALI25`, `FESTIVE30`, `SUMMER20`).
+  4. Dynamic seasonal discount rate unique to the product SKU/ID hash (10% to 35%).
+- Computes original list M.R.P. accurately:
+  $$\text{Original M.R.P.} = \frac{\text{Selling Price}}{1 - \frac{\text{Discount Percent}}{100}}$$
+- Automatically renders dynamic deal badges (`⚡ Festival Special`, `⚡ Limited Time Deal`, `⚡ Deal of the Day`) and savings indicators.
+
+### 6. Admin Promotions & Customer Tier Coupon Engine
+- Located in `admin.routes.ts`, `offers.routes.ts`, and `AdminPortal.tsx`.
+- Full administrative CRUD:
+  - **Create**: Launch new promotions with custom code, campaign title, discount type (`PERCENTAGE` or `FIXED_AMOUNT`), discount value, and eligible customer tier.
+  - **Edit**: Update campaign titles, discount values, scopes, and tier restrictions.
+  - **Toggle**: Enable or disable coupons with 1 click.
+  - **Delete**: Permanently delete obsolete coupon codes.
+- **Customer Membership Tier Restrictions**: Encoded as `[TIER:GOLD]` or `[TIER:PLATINUM]` in offer metadata. During checkout, `order.service.ts` verifies customer's tier (`STANDARD`, `BRONZE`, `SILVER`, `GOLD`, `PLATINUM`) against promotion requirements, rejecting unqualified applications with descriptive guidance.
+
+### 7. SuperCoins Loyalty Accrual & Instant Checkout Deduction
+- Customers earn 5 reward points per $1 spent on confirmed orders.
+- Points can be redeemed directly on the checkout screen:
+  $$100 \text{ SuperCoins} = \$1.00 \text{ Instant Checkout Deduction}$$
+- Accumulating points automatically elevates customers into higher membership tiers (`BRONZE` at 1 pt, `SILVER` at 500 pts, `GOLD` at 2,000 pts, `PLATINUM` at 5,000 pts), unlocking exclusive tier-only coupon promotions.
 
 ---
 
@@ -239,11 +262,13 @@ PREPARING ───> DISPATCHED ───> IN_TRANSIT ───> OUT_FOR_DELIVER
 | Feature Area | User Action | Technical Mechanism |
 | :--- | :--- | :--- |
 | **Catalog Browsing** | Search products by name, filter by category tabs | Query `GET /api/products?search=...&category=...` |
+| **Dynamic Festival Deals** | Browse items with dynamic discount tags and M.R.P. strikethroughs | `getProductDiscount()` computes dynamic rates and list M.R.P. |
 | **Price Range Slider** | Enter Min and Max price bounds | Debounced 350ms input state, updates query params |
 | **1-Click Buy Now** | Click "⚡ Buy Now" button on details modal | Bypasses cart, directly triggers fast checkout modal with selected quantity |
 | **Product Gallery** | Click **"Details"** on any product | Modal opens `ProductDetailsDialog.tsx` with 4-angle gallery and active border rings |
 | **SuperCoins Redemption**| Check "Redeem SuperCoins" during checkout | Deducts points balance for instant discount ($100 \text{ pts} = \$1.00$) |
-| **Coupon Code Input** | Enter `SAVE10`, `TECH20`, `WELCOME50` | Validates coupon rules and discounts order subtotal |
+| **Tier-Restricted Coupons** | Enter or 1-click select available promo codes | Validates customer membership tier against coupon requirements |
+| **Customer Registration** | Click "Create account" tab in Auth modal | Self-service sign up with name, phone, email, and password |
 | **Shopping Cart & Wishlist**| Add/remove items, toggle heart icon | Persisted in local state / user profile, displays count badge |
 | **5-Stage Live Tracking**| Open Orders tab → Click "Follow Delivery" | Interactive 5-step visual delivery tracker (`PREPARING` to `DELIVERED`) |
 | **Return Requests** | Request return on delivered orders | Select return reason, creates `ReturnRequest` record |
@@ -260,6 +285,7 @@ PREPARING ───> DISPATCHED ───> IN_TRANSIT ───> OUT_FOR_DELIVER
 | **Shipment Progression**| Advance tracking milestones | Stepper controls (`PREPARING` → `DISPATCHED` → `IN_TRANSIT` → `OUT_FOR_DELIVERY` → `DELIVERED`) |
 | **Catalog Management** | Create and edit products with 4 angles | URL inputs + local device file upload pickers with instant preview |
 | **Product Deletion** | Delete or archive out-of-stock listings | Clean deletion if zero orders; safe archival (`ARCHIVED`) if historical orders exist |
+| **Promotions & Offers CRUD**| Create, edit, toggle, or delete coupons | Configure discount % or $, scope (storewide/category), and target customer loyalty tier |
 | **Warehouse Control** | Add warehouses and adjust stock | Enter warehouse code, city; adjust stock deltas (+/-) per SKU |
 | **Customer Registry** | View registered users | Inspect customer total spend, total orders; toggle account active/inactive switch |
 | **Review Moderation** | Review customer reviews | Pending queue table; one-click **Approve** (makes visible) or **Reject** |
@@ -396,6 +422,11 @@ npm run dev
 | `POST` | `/api/admin/inventory/adjust` | Admin Role | Adjust stock deltas (+/-) per warehouse |
 | `GET` | `/api/admin/returns` | Admin Role | Customer return requests queue |
 | `POST` | `/api/admin/returns/:id/refund` | Admin Role | Execute refund & record financial ledger debit |
+| `GET` | `/api/admin/offers` | Admin Role | List all platform promotional offers & coupons |
+| `POST` | `/api/admin/offers` | Admin Role | Create promotional coupon with tier eligibility |
+| `PATCH`| `/api/admin/offers/:id` | Admin Role | Update coupon title, discount %, or tier scope |
+| `PATCH`| `/api/admin/offers/:id/status` | Admin Role | 1-click toggle coupon status (ACTIVE/DISABLED) |
+| `DELETE`| `/api/admin/offers/:id` | Admin Role | Permanently delete promotional coupon |
 
 ---
 
@@ -538,15 +569,24 @@ model WarehouseStaff {
 ✔ vendor onboarding schema rejects empty business name (0.27ms)
 ✔ vendor password hashes and verifies with bcrypt (332.77ms)
 ✔ vendor JWT signs and verifies with VENDOR role payload (5.32ms)
+✔ extractOfferTier parses [TIER:GOLD] and returns clean description (1.33ms)
+✔ extractOfferTier defaults to ALL when no tier tag is present (0.17ms)
+✔ checkTierEligibility permits higher rank tiers (PLATINUM using GOLD coupon) (0.18ms)
+✔ checkTierEligibility permits exact rank tier (GOLD using GOLD coupon) (0.22ms)
+✔ checkTierEligibility rejects lower rank tier (BRONZE using GOLD coupon) (0.26ms)
+✔ checkTierEligibility permits any user when coupon is for ALL (0.12ms)
+✔ offer schema accepts valid percentage festival promotion (3.26ms)
+✔ offer schema accepts fixed amount promotion for VIP members (0.61ms)
+✔ offer schema rejects invalid code with special symbols (0.54ms)
 
-Total Tests: 51 | Passed: 51 | Failed: 0 | Cancelled: 0 | Duration: 1.12s
+Total Tests: 60 | Passed: 60 | Failed: 0 | Cancelled: 0 | Duration: 1.26s
 ```
 
 ### Build Verification Logs
 - **Backend Build (`prisma generate && tsc`)**:
-  `✔ Generated Prisma Client (v6.19.3) in 1.02s. TypeScript exit code 0.`
+  `✔ Generated Prisma Client (v6.19.3) in 340ms. TypeScript exit code 0.`
 - **Frontend Build (`tsc -b && vite build`)**:
-  `✓ 2005 modules transformed. dist/assets/index-54F25H0r.js 548.78 kB. Vite built in 1.55s. Exit code 0.`
+  `✓ 2006 modules transformed. dist/assets/index-Db5-RCqA.js 555.15 kB. Vite built in 1.94s. Exit code 0.`
 
 ---
 
@@ -560,8 +600,13 @@ Total Tests: 51 | Passed: 51 | Failed: 0 | Cancelled: 0 | Duration: 1.12s
 6. `frontend/src/admin/AdminPortal.tsx`: Added local file picker upload buttons, loading state, preview, and clear button across all 4 photographic camera angles.
 7. `frontend/src/vendor/VendorPortal.tsx`: Added local file picker upload buttons across 4 angles, plus self-service seller registration modal with nearest warehouse hub routing.
 8. `backend/src/modules/auth/auth.routes.ts`: Added `POST /register-vendor` and `GET /warehouses/public`.
-9. `README.md`: Updated comprehensive documentation, test accounts, live links, and features.
-10. `manual_testing_guide.md`: Created detailed step-by-step test execution scripts for all portals.
+9. `frontend/src/lib/discounts.ts`: Created dynamic festival pricing and realistic M.R.P. calculation engine based on product/category offers and unique SKU seeds, replacing static hardcoded -20% and 1.25 multiplier.
+10. `frontend/src/admin/AdminPortal.tsx`: Revamped Promotions & Offers tab to provide full CRUD (Create with customer tier restrictions, Edit, Toggle Enable/Disable, Delete) and tier badges.
+11. `backend/src/modules/admin.routes.ts`: Added `DELETE /admin/offers/:offerId`, `PATCH /admin/offers/:offerId`, and tier tag encoding.
+12. `backend/src/modules/offers.routes.ts`: Enhanced `GET /` and `GET /:code` to extract `eligibleTier` from offer description.
+13. `frontend/src/CustomerCommerceDialog.tsx`: Added customer loyalty tier eligibility enforcement and visual tier pills on coupon codes.
+14. `README.md`: Restored full architectural documentation structure, test accounts, live links, and features.
+15. `manual_testing_guide.md`: Created detailed step-by-step test execution scripts for all portals.
 
 ---
 

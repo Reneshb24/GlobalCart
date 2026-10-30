@@ -317,6 +317,12 @@
 .badge-approved { background: #dcfce7; color: #166534; }
 .badge-rejected { background: #fee2e2; color: #991b1b; }
 .badge-info { background: #eff6ff; color: #1d4ed8; }
+.badge-disabled { background: #fee2e2; color: #991b1b; }
+.badge-all { background: #f1f5f9; color: #475569; }
+.badge-bronze { background: #ffedd5; color: #9a3412; }
+.badge-silver { background: #e2e8f0; color: #334155; }
+.badge-gold { background: #fef08a; color: #854d0e; font-weight: 700; }
+.badge-platinum { background: #fae8ff; color: #86198f; font-weight: 700; }
 
 /* Buttons */
 .admin-btn-primary {

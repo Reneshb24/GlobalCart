@@ -110,6 +110,32 @@ export async function checkout(userId: string, input: CheckoutInput) {
           throw new OrderError("Offer does not apply to items in your cart", 400);
         }
 
+        // Check Customer Membership Tier Eligibility
+        if (offer.description && offer.description.includes("[TIER:")) {
+          const match = offer.description.match(/\[TIER:([A-Za-z0-9_,]+)\]/);
+          if (match) {
+            const requiredTiers = match[1].split(",").map(t => t.trim().toUpperCase());
+            const loyalty = await tx.loyaltyAccount.findUnique({ where: { userId } });
+            const userTier = (loyalty?.tier || "BRONZE").toUpperCase();
+
+            const tierRanks: Record<string, number> = {
+              STANDARD: 0,
+              BRONZE: 1,
+              SILVER: 2,
+              GOLD: 3,
+              PLATINUM: 4
+            };
+
+            const userRank = tierRanks[userTier] ?? 1;
+            const minRequiredRank = Math.min(...requiredTiers.map(t => tierRanks[t] ?? 1));
+            const isRankEligible = userRank >= minRequiredRank;
+
+            if (!requiredTiers.includes(userTier) && !isRankEligible) {
+              throw new OrderError(`Coupon "${offer.code}" is reserved for ${requiredTiers.join("/")} tier members. Your current tier is ${userTier}.`, 400);
+            }
+          }
+        }
+
         let eligibleSubtotal = new Prisma.Decimal(0);
 
         for (const item of cart.items) {

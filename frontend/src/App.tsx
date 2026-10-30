@@ -11,6 +11,7 @@ import AddressBookDialog from "./AddressBookDialog";
 import ProductDetailsDialog from "./ProductDetailsDialog";
 import ProductImg from "./ProductImg";
 import { getPrimaryProductImage, getProductThumbnail } from "./lib/productImages";
+import { getProductDiscount } from "./lib/discounts";
 import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
@@ -827,6 +828,7 @@ function App() {
               {products.map((product, index) => {
                 const primaryImg = getPrimaryProductImage(product);
                 const saved = wishlist.includes(product.id);
+                const discountInfo = getProductDiscount(product, offers);
                 return <article className="product-card" key={product.id} style={{ animationDelay: `${index * 55}ms` }}>
                   <div className="product-image-wrap">
                     <ProductImg
@@ -886,11 +888,14 @@ function App() {
                     <div className="product-bottom">
                       <div>
                         <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
-                          <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 700 }}>-20%</span>
+                          <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 700 }}>-{discountInfo.discountPercent}%</span>
                           <strong className="product-price">{formatPrice(product.price, product.currency)}</strong>
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b", textDecoration: "line-through" }}>
-                          M.R.P.: {formatPrice(Number(product.price) * 1.25, product.currency)}
+                          M.R.P.: {formatPrice(discountInfo.originalPrice, product.currency)}
+                        </div>
+                        <div style={{ fontSize: "10px", color: "#b45309", fontWeight: 700, marginTop: "1px" }}>
+                          ⚡ {discountInfo.dealLabel}
                         </div>
                       </div>
                       <button className="product-detail-open" type="button"
@@ -1043,7 +1048,7 @@ function App() {
                 }}>
                   <Sparkles size={16} color="#16a34a" style={{ flexShrink: 0 }} />
                   <span>
-                    <strong>Coupons & Rewards:</strong> Apply code <strong>SAVE20</strong> (20% off) or redeem SuperCoins at checkout!
+                    <strong>Coupons & Rewards:</strong> Apply eligible promo codes or redeem SuperCoins at checkout for instant discounts!
                   </span>
                 </div>
                 {cartData.hasMixedCurrencies && <p className="auth-error">Your cart contains different currencies. Checkout is unavailable until they are separated.</p>}
@@ -1104,6 +1109,7 @@ function App() {
         <ProductDetailsDialog
           slug={productDetailsSlug}
           savedProductIds={wishlist}
+          activeOffers={offers}
           onClose={() => setProductDetailsSlug(null)}
           onAddToCart={(product, quantity) => {
             setProductDetailsSlug(null);

@@ -1,13 +1,29 @@
-﻿import { Router } from "express";
-import { z } from "zod";
+import { Router } from "express";
 import { prisma } from "../lib/prisma";
 
 const router = Router();
 
+function formatOfferWithTier(offer: any) {
+  let eligibleTier = "ALL";
+  let cleanDescription = offer.description || "";
+  if (offer.description && offer.description.includes("[TIER:")) {
+    const match = offer.description.match(/\[TIER:([A-Za-z0-9_,]+)\]/);
+    if (match) {
+      eligibleTier = match[1].trim();
+      cleanDescription = offer.description.replace(/\[TIER:[^\]]+\]/g, "").trim();
+    }
+  }
+  return {
+    ...offer,
+    eligibleTier,
+    cleanDescription: cleanDescription || offer.description
+  };
+}
+
 router.get("/", async (_req, res) => {
   try {
     const now = new Date();
-    const offers = await prisma.offer.findMany({
+    const rawOffers = await prisma.offer.findMany({
       where: {
         status: "ACTIVE",
         startsAt: { lte: now },
@@ -20,6 +36,7 @@ router.get("/", async (_req, res) => {
       orderBy: { endsAt: "asc" }
     });
 
+    const offers = rawOffers.map(formatOfferWithTier);
     res.json({ offers, count: offers.length });
   } catch {
     res.status(500).json({ error: "Unable to retrieve offers" });
@@ -50,7 +67,7 @@ router.get("/:code", async (req, res) => {
       return;
     }
 
-    res.json({ offer });
+    res.json({ offer: formatOfferWithTier(offer) });
   } catch {
     res.status(500).json({ error: "Unable to validate offer" });
   }
