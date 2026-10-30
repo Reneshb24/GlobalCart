@@ -28,11 +28,9 @@
 10. [Local Development & Deployment Guide](#10-local-development--deployment-guide)
 11. [Comprehensive API Endpoint Map](#11-comprehensive-api-endpoint-map)
 12. [Role & Permission Matrix](#12-role--permission-matrix)
-13. [Schema Change Proposal: Multi-User Vendor Membership & Warehouse-Specific Staff](#13-schema-change-proposal-multi-user-vendor-membership--warehouse-specific-staff)
-14. [Environment Variables Specification](#14-environment-variables-specification)
-15. [Quality Assurance & Test Evidence](#15-quality-assurance--test-evidence)
-16. [List of Modified Files & Implementation Decisions](#16-list-of-modified-files--implementation-decisions)
-17. [Security, Zero-Secrets Verification & Data Privacy Compliance](#17-security-zero-secrets-verification--data-privacy-compliance)
+13. [Environment Variables Specification](#13-environment-variables-specification)
+14. [Quality Assurance & Test Evidence](#14-quality-assurance--test-evidence)
+15. [List of Modified Files & Implementation Decisions](#15-list-of-modified-files--implementation-decisions)
 
 ---
 
@@ -450,59 +448,8 @@ npm run dev
 
 ---
 
-## 13. Schema Change Proposal: Multi-User Vendor Membership & Warehouse-Specific Staff
 
-In compliance with the project's **Locked Schema Protocol** (Section 3 of Master Prompt), any structural schema migration must be formally proposed with safe backwards compatibility before applying.
-
-### A. Existing Models Inspected
-- `model Vendor`: Currently has `id, name, email (unique), phone, isActive`. It links to `User` via email matching.
-- `model Warehouse`: Currently has `id, code (unique), name, countryCode, region, city, isActive`. Has no direct link to `User`.
-- `enum UserRole`: Has `CUSTOMER, ADMIN, VENDOR, SUPPORT`.
-
-### B. Proposed New Models & Relations
-```prisma
-// 1. Multi-User Vendor Membership
-model VendorMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  vendorId  String   @db.Uuid
-  userId    String   @db.Uuid
-  role      String   @default("MEMBER") // OWNER, MANAGER, CATALOG, FINANCE
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([vendorId, userId])
-  @@index([userId])
-}
-
-// 2. Warehouse Staff Assignment
-model WarehouseStaff {
-  id          String   @id @default(uuid()) @db.Uuid
-  warehouseId String   @db.Uuid
-  userId      String   @db.Uuid
-  role        String   @default("OPERATOR") // MANAGER, OPERATOR, CONTROLLER
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([warehouseId, userId])
-  @@index([userId])
-}
-```
-
-### C. Migration & Backwards Compatibility Plan
-1. **Zero Downtime**: Existing `Vendor.email` mapping remains fully operational as a fallback.
-2. **Backfill Script**: Automatically creates a `VendorMember` (`role: 'OWNER'`) for every existing `Vendor` matching `User.email`.
-3. **Rollback Strategy**: Dropping `VendorMember` and `WarehouseStaff` tables leaves core `User`, `Vendor`, and `Warehouse` records untouched.
-
----
-
-## 14. Environment Variables Specification
+## 13. Environment Variables Specification
 
 | Variable Name | Required | Default / Format | Description |
 | :--- | :--- | :--- | :--- |
@@ -516,7 +463,7 @@ model WarehouseStaff {
 
 ---
 
-## 15. Quality Assurance & Test Evidence
+## 14. Quality Assurance & Test Evidence
 
 ### Layer 1: Master Browser End-to-End Test Suite (`master_frontend_e2e.ts`)
 Executed against local Express backend (`http://localhost:4000`) and Vite frontend (`http://localhost:5173`) in headless Chrome:
@@ -719,26 +666,5 @@ Total Tests: 60 | Passed: 60 | Failed: 0 | Cancelled: 0 | Duration: 1.26s
 
 ---
 
-## 17. Security, Zero-Secrets Verification & Data Privacy Compliance
-
-GlobalCart enforces a strict zero-secrets policy across the entire repository and continuous deployment pipeline:
-
-1. **Zero Committed Secrets**:
-   - No database credentials, CockroachDB connection strings, production JWT signing keys, payment secrets, or third-party API keys are committed to source control or documented in markdown files.
-   - All connection strings in documentation use generic, sanitized placeholders (`postgresql://<user>:<password>@<cluster-host>:26257/defaultdb?sslmode=verify-full`).
-
-2. **Strict Git Tracking Boundaries**:
-   - Environment configuration files (`.env`, `.env.*`) and temporary browser profile directories (`.tmp_chrome*`) are listed in `.gitignore` and verified uncommitted.
-   - Only sanitized `.env.example` templates with empty placeholders are tracked in git.
-
-3. **Runtime Credential Protection**:
-   - `JWT_SECRET` must contain at least 64 high-entropy characters. The authentication engine fails closed on startup if the variable is missing or underspecified.
-   - Passwords are never stored in plain text; all accounts are hashed with `bcryptjs` using 12 salt rounds.
-   - Passwords are never serialized into JWT payloads, API responses, client-side browser storage (`sessionStorage`/`localStorage`), or logging output.
-
-4. **Public Test Accounts**:
-   - Demonstrated credentials (`Admin123!`, `VendorPass123!`, `CustomerPass123!`) are dummy testing fixtures with standard bcrypt hashes, provided solely to enable automated evaluation, local peer testing, and academic grading without exposing live production credentials.
-
----
 
 *Document compiled and verified for GlobalCart Production Release 1.0.0.*
