@@ -1210,6 +1210,7 @@ export default function VendorPortal() {
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>SKU</label>
                     <input
+                      name="sku"
                       required
                       disabled={!!editingProduct}
                       style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
@@ -1220,6 +1221,7 @@ export default function VendorPortal() {
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Slug</label>
                     <input
+                      name="slug"
                       required
                       disabled={!!editingProduct}
                       style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
@@ -1232,6 +1234,7 @@ export default function VendorPortal() {
                 <div style={{ marginBottom: "12px" }}>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Product Name</label>
                   <input
+                    name="name"
                     required
                     style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
                     value={productForm.name}
@@ -1249,6 +1252,7 @@ export default function VendorPortal() {
                 <div style={{ marginBottom: "12px" }}>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Description</label>
                   <textarea
+                    name="description"
                     required
                     rows={3}
                     style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
@@ -1261,6 +1265,7 @@ export default function VendorPortal() {
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Brand</label>
                     <input
+                      name="brand"
                       style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
                       value={productForm.brand}
                       onChange={(e) => setProductForm({ ...productForm, brand: e.target.value })}
@@ -1269,6 +1274,7 @@ export default function VendorPortal() {
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Category</label>
                     <select
+                      name="categoryId"
                       required
                       style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid #d6d3d1", borderRadius: "6px" }}
                       value={productForm.categoryId}
@@ -1286,6 +1292,7 @@ export default function VendorPortal() {
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Price ($)</label>
                     <input
+                      name="price"
                       type="number"
                       step="0.01"
                       min="0"

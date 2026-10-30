@@ -1,4 +1,5 @@
 process.env.NODE_ENV = "test";
+process.env.USE_LOCAL_MOCK_DB = "true";
 import "dotenv/config";
 import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
@@ -51,7 +52,7 @@ async function runMasterE2E() {
   console.log("[SERVER] GlobalCart Vite Frontend running on http://localhost:5173");
 
   // 3. Launch Chrome
-  const profileDir = path.resolve(__dirname, "../../.tmp_chrome_e2e_master");
+  const profileDir = path.resolve(__dirname, `../../.tmp_chrome_e2e_${Date.now()}`);
   if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
 
   const browser = await puppeteer.launch({
@@ -79,6 +80,12 @@ async function runMasterE2E() {
     const text = msg.text();
     if (msg.type() === "error" || text.includes("Error") || text.includes("Uncaught") || text.includes("400") || text.includes("500")) {
       console.log(`  [BROWSER CONSOLE] ${msg.type()}: ${text}`);
+    }
+  });
+
+  page.on("response", (res) => {
+    if (res.status() >= 400) {
+      console.log(`  [HTTP ERROR ${res.status()}] ${res.request().method()} ${res.url()}`);
     }
   });
 
@@ -136,6 +143,10 @@ async function runMasterE2E() {
     const submitBtn = await page.waitForSelector("button.auth-submit");
     await submitBtn!.click();
     console.log("  Submitted customer registration form");
+
+    await new Promise(r => setTimeout(r, 1000));
+    const authErrorMsg = await page.$eval(".auth-error", el => el.textContent).catch(() => null);
+    if (authErrorMsg) console.log("  [AUTH ERROR ON PAGE]:", authErrorMsg);
 
     // Verify authenticated state: modal closes and user name appears in header
     await page.waitForFunction(() => {
@@ -302,11 +313,15 @@ async function runMasterE2E() {
     }
 
     // Test Rewards & SuperCoins Tab
-    const loyaltyTabBtn = await page.$('button.commerce-tab:has-text("Rewards"), button.commerce-tab:nth-child(3)');
-    if (loyaltyTabBtn) {
-      await page.evaluate(el => (el as HTMLButtonElement)?.click(), loyaltyTabBtn);
-      console.log("  Inspected Rewards & SuperCoins Tab");
-      await new Promise(r => setTimeout(r, 600));
+    const commerceTabs = await page.$$("button.commerce-tab");
+    for (const tab of commerceTabs) {
+      const text = await page.evaluate(el => el.textContent, tab);
+      if (text && (text.includes("Rewards") || text.includes("Coins"))) {
+        await page.evaluate(el => (el as HTMLButtonElement)?.click(), tab);
+        console.log("  Inspected Rewards & SuperCoins Tab");
+        await new Promise(r => setTimeout(r, 600));
+        break;
+      }
     }
 
     // Close orders dialog
@@ -345,12 +360,12 @@ async function runMasterE2E() {
 
     // Fill vendor registration form
     const vendorEmail = `merchant_${Date.now()}@globalcart.example`;
-    await page.waitForSelector('input[placeholder="Acme Global Emporium"]', { timeout: 5000 });
-    await page.type('input[placeholder="Acme Global Emporium"]', "Zenith Global Tech");
+    await page.waitForSelector('input[placeholder="e.g. Acme Tech Innovations"]', { timeout: 8000 });
+    await page.type('input[placeholder="e.g. Acme Tech Innovations"]', "Zenith Global Tech");
     await page.type('input[placeholder="Alex"]', "Marcus");
     await page.type('input[placeholder="Vance"]', "Vance");
     await page.type('input[placeholder="seller@business.com"]', vendorEmail);
-    await page.type('input[placeholder="••••••••"]', "VendorPass123!");
+    await page.type('.vendor-guard-card input[type="password"]', "VendorPass123!");
     await page.type('input[placeholder="+1 555-0199"]', "+1 555-0844");
 
     // Select nearest warehouse if available
@@ -393,23 +408,35 @@ async function runMasterE2E() {
     await page.evaluate(el => (el as HTMLButtonElement)?.click(), addProductBtn);
     console.log("  Clicked 'Add Product' button");
 
-    await page.waitForSelector(".vendor-modal", { timeout: 5000 });
+    await page.waitForSelector('.vendor-modal input[name="sku"]', { timeout: 8000 });
 
+    const newProdSku = `SKU-ZEN-${Date.now().toString().slice(-4)}`;
+    const newProdSlug = `zenith-pro-anc-${Date.now().toString().slice(-4)}`;
     const newProdName = `Zenith Pro ANC Headphones ${Date.now().toString().slice(-4)}`;
-    await page.type('input[placeholder*="Wireless Earbuds"]', newProdName);
-    await page.type('input[placeholder*="SonicPro"]', "Zenith Audio");
+    await page.type('.vendor-modal input[name="sku"]', newProdSku);
+    await page.type('.vendor-modal input[name="slug"]', newProdSlug);
+    await page.type('.vendor-modal input[name="name"]', newProdName);
+    await page.type('.vendor-modal textarea[name="description"]', "Engineered for acoustic fidelity with hybrid noise cancellation.");
+    await page.type('.vendor-modal input[name="brand"]', "Zenith Audio");
 
     // Select category
-    const catSelect = await page.$$(".vendor-modal select");
-    if (catSelect.length > 0) {
+    const catSelect = await page.$('.vendor-modal select[name="categoryId"]');
+    if (catSelect) {
       await page.evaluate(el => {
-        if (el.options.length > 1) el.selectedIndex = 1;
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      }, catSelect[0]);
+        if (el.options.length > 1) {
+          el.value = el.options[1].value;
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }, catSelect);
     }
 
     // Price & Quantity
-    await page.type('input[placeholder="89.99"]', "149.99");
+    await page.focus('.vendor-modal input[name="price"]');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('A');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
+    await page.type('.vendor-modal input[name="price"]', "149.99");
 
     // Test +10 quantity button in 4-angle modal
     const plusTenBtn = await page.$('.vendor-modal button[title="Add 10 units"]');
@@ -420,20 +447,37 @@ async function runMasterE2E() {
     }
 
     // Use "Fill Sample Studio Photos" button to populate all 4 photography angles
-    const fillAnglesBtn = await page.$(".vendor-modal button.vendor-btn-secondary.vendor-btn-sm");
-    if (fillAnglesBtn) {
-      await page.evaluate(el => (el as HTMLButtonElement)?.click(), fillAnglesBtn);
-      console.log("  Populated 4 studio camera angles via 1-click Photography Studio helper");
+    const modalButtons = await page.$$(".vendor-modal button");
+    for (const mb of modalButtons) {
+      const text = await page.evaluate(el => el.textContent, mb);
+      if (text && text.includes("Fill Sample")) {
+        await page.evaluate(el => (el as HTMLButtonElement)?.click(), mb);
+        console.log("  Populated 4 studio camera angles via 1-click Photography Studio helper");
+        break;
+      }
     }
 
-    await page.type(".vendor-modal textarea", "Engineered for acoustic fidelity with hybrid noise cancellation.");
-
     // Submit product
+    const invalidFields = await page.evaluate(() => {
+      const form = document.querySelector(".vendor-modal form") as HTMLFormElement;
+      if (!form) return "no form";
+      const elements = Array.from(form.elements) as (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
+      return elements
+        .filter(el => !el.checkValidity())
+        .map(el => ({
+          name: el.name || el.getAttribute("name"),
+          tag: el.tagName,
+          type: (el as any).type,
+          validationMessage: el.validationMessage
+        }));
+    });
+    console.log("  [FORM INVALID FIELDS]:", JSON.stringify(invalidFields));
+
     const publishBtn = await page.waitForSelector(".vendor-modal-footer button.vendor-btn-primary");
-    await page.evaluate(el => (el as HTMLButtonElement)?.click(), publishBtn);
+    await publishBtn!.click();
     console.log("  Submitted listing creation form");
 
-    await page.waitForFunction(() => !document.querySelector(".vendor-modal"), { timeout: 10000 });
+    await page.waitForFunction(() => !document.querySelector(".vendor-modal"), { timeout: 15000 });
     console.log(`  SUCCESS: Product "${newProdName}" successfully created in vendor catalog!`);
 
     // Switch to Inventory tab
@@ -467,7 +511,7 @@ async function runMasterE2E() {
     const adminEmailInput = await page.$('input[placeholder="admin@globalcart.example"], input[type="email"]');
     if (adminEmailInput) {
       await adminEmailInput.type("globalcart.admin.dev@example.com");
-      await page.type('input[placeholder="        "], input[type="password"]', "Admin123!");
+      await page.type('.admin-guard-card input[type="password"]', "Admin123!");
       const adminLoginBtn = await page.waitForSelector("button.admin-btn-primary");
       await adminLoginBtn!.click();
       console.log("  Authenticated with Administrator credentials");
@@ -495,8 +539,13 @@ async function runMasterE2E() {
     await page.waitForSelector(".admin-modal", { timeout: 5000 });
     const promoCode = `FESTIVE_${Date.now().toString().slice(-4)}`;
     await page.type('input[placeholder="DIWALI25"]', promoCode);
-    await page.type('input[placeholder*="Festival Deal"]', "Diwali Mega Sale 25% Off");
-    await page.type('input[type="number"][value="10"]', "25");
+    await page.type('input[placeholder*="Festival"]', "Diwali Mega Sale 25% Off");
+    await page.focus('.admin-modal input[type="number"]');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('A');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
+    await page.type('.admin-modal input[type="number"]', "25");
 
     // Select GOLD in tier dropdown
     const allSelects = await page.$$(".admin-modal select");

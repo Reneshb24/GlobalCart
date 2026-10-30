@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 build/
 coverage/
@@ -12,3 +12,4 @@ coverage/
 *.backup*
 *.cors-backup*
 *.test-backup*
+.tmp_chrome*
