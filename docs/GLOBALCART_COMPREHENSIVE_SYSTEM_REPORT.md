@@ -26,6 +26,12 @@
    - [Catalog Deletion & Safe Historical Archiving](#catalog-deletion--safe-historical-archiving)
    - [Managing Customer Accounts](#managing-customer-accounts)
 10. [Local Development & Deployment Guide](#10-local-development--deployment-guide)
+11. [Comprehensive API Endpoint Map](#11-comprehensive-api-endpoint-map)
+12. [Role & Permission Matrix](#12-role--permission-matrix)
+13. [Schema Change Proposal: Multi-User Vendor Membership & Warehouse-Specific Staff](#13-schema-change-proposal-multi-user-vendor-membership--warehouse-specific-staff)
+14. [Environment Variables Specification](#14-environment-variables-specification)
+15. [Quality Assurance & Test Evidence](#15-quality-assurance--test-evidence)
+16. [List of Modified Files & Implementation Decisions](#16-list-of-modified-files--implementation-decisions)
 
 ---
 
@@ -295,7 +301,7 @@ PREPARING ───> DISPATCHED ───> IN_TRANSIT ───> OUT_FOR_DELIVER
 6. The order is placed and confirmation displays earned SuperCoins and redeemed discounts.
 
 ### Scenario B: Admin Shipment Dispatch & 5-Stage Live Progression
-1. Log into the Admin Panel at `/admin` (`globalcart.admin.dev@example.com` / `Admin123!`).
+1. Log into the Admin Panel at `/admin` (`globalcart.admin.dev@example.com` / `Admin123!` ).
 2. Go to **"Orders"**, select the new order, and click **"Dispatch Shipment"**.
 3. Choose carrier (`FedEx`, `UPS`, `DHL`, `BlueDart`) and enter tracking code.
 4. Advance the shipment stage by stage: `Mark Dispatched` → `In Transit` → `Out for Delivery` → `Confirm Delivered`.
@@ -351,5 +357,180 @@ cd ../frontend
 npm install
 npm run dev
 ```
+
+---
+
+## 11. Comprehensive API Endpoint Map
+
+| Method | Endpoint | Protection | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Public | Customer registration |
+| `POST` | `/api/auth/register-vendor` | Public | Multi-vendor self-service registration with business & warehouse info |
+| `POST` | `/api/auth/login` | Public (Rate Limited) | User authentication & JWT issuance |
+| `GET` | `/api/auth/me` | Bearer Token | Authenticated identity & profile retrieval |
+| `GET` | `/api/auth/warehouses/public`| Public | Active warehouse list for registration dropdowns |
+| `GET` | `/api/products` | Public | Filtered catalog query (category, price, search) |
+| `GET` | `/api/products/:slug` | Public | Single product details with 4-angle gallery & reviews |
+| `GET` | `/api/categories` | Public | Category taxonomy tree |
+| `GET` | `/api/offers` | Public | Active promotional discounts & coupon codes |
+| `POST` | `/api/cart/items` | Bearer Token | Add item to customer cart |
+| `PATCH`| `/api/cart/items/:id` | Bearer Token | Update cart item quantity |
+| `DELETE`| `/api/cart/items/:id`| Bearer Token | Remove cart item |
+| `POST` | `/api/checkout` | Bearer Token | Atomically reserve inventory & create order |
+| `GET` | `/api/orders` | Bearer Token | Customer order history |
+| `GET` | `/api/orders/:id/shipments` | Bearer Token | Customer 5-stage shipment tracking milestones |
+| `POST` | `/api/orders/:id/cancel` | Bearer Token | Cancel pending order & release reserved stock |
+| `POST` | `/api/upload` | Bearer Token | Base64 image file upload, MIME validation, static URL generation |
+| `GET` | `/api/vendor/products` | Vendor Role | Scoped vendor listings |
+| `POST` | `/api/vendor/products` | Vendor Role | Create vendor listing with 4 camera angles |
+| `DELETE`| `/api/vendor/products/:id`| Vendor Role | Delete/archive out-of-stock vendor product |
+| `GET` | `/api/vendor/inventory` | Vendor Role | Multi-warehouse inventory levels for vendor SKUs |
+| `GET` | `/api/vendor/orders` | Vendor Role | Scoped order items belonging to vendor |
+| `GET` | `/api/admin/analytics/overview` | Admin Role | Global marketplace KPIs |
+| `GET` | `/api/admin/orders` | Admin Role | Platform order operations table |
+| `POST` | `/api/admin/shipments` | Admin Role | Dispatch order with carrier & tracking code |
+| `PATCH`| `/api/admin/shipments/:id/status`| Admin Role | Advance shipment through 5-milestone stepper |
+| `POST` | `/api/admin/products` | Admin Role | Platform catalog creation |
+| `DELETE`| `/api/admin/products/:id` | Admin Role | Clean delete or safe archive of catalog items |
+| `POST` | `/api/admin/warehouses` | Admin Role | Create regional distribution hub |
+| `POST` | `/api/admin/inventory/adjust` | Admin Role | Adjust stock deltas (+/-) per warehouse |
+| `GET` | `/api/admin/returns` | Admin Role | Customer return requests queue |
+| `POST` | `/api/admin/returns/:id/refund` | Admin Role | Execute refund & record financial ledger debit |
+
+---
+
+## 12. Role & Permission Matrix
+
+| Capability | Customer | Vendor | Warehouse Staff | Platform Admin |
+| :--- | :---: | :---: | :---: | :---: |
+| Browse Catalog & 4-Angle Gallery | ✅ | ✅ | ✅ | ✅ |
+| 1-Click Buy Now & Standard Checkout | ✅ | ✅ | ✅ | ✅ |
+| Redeem SuperCoins & Apply Coupons | ✅ | ✅ | ✅ | ✅ |
+| Manage Personal Addresses & Orders | ✅ | Own Only | Own Only | Platform-Wide |
+| Create & Upload Product Listings | ❌ | Own Store | ❌ | Platform-Wide |
+| Delete/Archive Out-of-Stock Listings | ❌ | Own Store | ❌ | Platform-Wide |
+| View Warehouse Stock Levels | ❌ | Own SKUs | Assigned Hub | Platform-Wide |
+| Dispatch Shipments & Advance Milestones | ❌ | ❌ | Assigned Hub | Platform-Wide |
+| Add Warehouses & Adjust Stock Deltas | ❌ | ❌ | ❌ | ✅ |
+| Moderate Customer Reviews | ❌ | ❌ | ❌ | ✅ |
+| Approve Returns & Issue Ledger Refunds | ❌ | ❌ | ❌ | ✅ |
+| Deactivate Customer / Vendor Accounts | ❌ | ❌ | ❌ | ✅ |
+
+---
+
+## 13. Schema Change Proposal: Multi-User Vendor Membership & Warehouse-Specific Staff
+
+In compliance with the project's **Locked Schema Protocol** (Section 3 of Master Prompt), any structural schema migration must be formally proposed with safe backwards compatibility before applying.
+
+### A. Existing Models Inspected
+- `model Vendor`: Currently has `id, name, email (unique), phone, isActive`. It links to `User` via email matching.
+- `model Warehouse`: Currently has `id, code (unique), name, countryCode, region, city, isActive`. Has no direct link to `User`.
+- `enum UserRole`: Has `CUSTOMER, ADMIN, VENDOR, SUPPORT`.
+
+### B. Proposed New Models & Relations
+```prisma
+// 1. Multi-User Vendor Membership
+model VendorMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  vendorId  String   @db.Uuid
+  userId    String   @db.Uuid
+  role      String   @default("MEMBER") // OWNER, MANAGER, CATALOG, FINANCE
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, userId])
+  @@index([userId])
+}
+
+// 2. Warehouse Staff Assignment
+model WarehouseStaff {
+  id          String   @id @default(uuid()) @db.Uuid
+  warehouseId String   @db.Uuid
+  userId      String   @db.Uuid
+  role        String   @default("OPERATOR") // MANAGER, OPERATOR, CONTROLLER
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, userId])
+  @@index([userId])
+}
+```
+
+### C. Migration & Backwards Compatibility Plan
+1. **Zero Downtime**: Existing `Vendor.email` mapping remains fully operational as a fallback.
+2. **Backfill Script**: Automatically creates a `VendorMember` (`role: 'OWNER'`) for every existing `Vendor` matching `User.email`.
+3. **Rollback Strategy**: Dropping `VendorMember` and `WarehouseStaff` tables leaves core `User`, `Vendor`, and `Warehouse` records untouched.
+
+---
+
+## 14. Environment Variables Specification
+
+| Variable Name | Required | Default / Format | Description |
+| :--- | :--- | :--- | :--- |
+| `DATABASE_URL` | Yes | `postgresql://user:pass@host:26257/defaultdb?sslmode=verify-full` | CockroachDB Cloud connection string |
+| `JWT_SECRET` | Yes | High-entropy string (64+ chars) | HMAC SHA-256 signing secret for session tokens |
+| `PORT` | No | `4000` | Express server port |
+| `NODE_ENV` | No | `production` / `development` | Runtime environment toggle |
+| `CORS_ORIGINS` | No | `https://global-cart-three.vercel.app` | Whitelist for cross-origin requests |
+| `VITE_API_URL` | Yes | `https://globalcart-api.onrender.com/api` | Frontend base URL for backend API calls |
+
+---
+
+## 15. Quality Assurance & Test Evidence
+
+### Backend Test Suite (Node.js Test Runner via `tsx`)
+```
+✔ rejects a request without a bearer token (10.08ms)
+✔ rejects an invalid or expired token (4.91ms)
+✔ rejects an inactive account (0.35ms)
+✔ rejects a token for a missing account (0.22ms)
+✔ allows an active account and attaches authenticated identity (0.27ms)
+✔ fails closed when account verification fails (0.33ms)
+✔ checkout accepts a valid COD request (5.20ms)
+✔ checkout rejects unsupported payment methods (0.45ms)
+✔ checkout rejects incomplete shipping addresses (0.33ms)
+✔ address creation normalizes country codes (1.49ms)
+✔ address creation rejects invalid country codes (0.27ms)
+✔ address updates reject empty objects (1.17ms)
+✔ address updates accept a single valid field (0.24ms)
+✔ requireVendor rejects when user is not authenticated (10.47ms)
+✔ requireVendor rejects when role is CUSTOMER (6.04ms)
+✔ requireVendor rejects when user is inactive (0.26ms)
+✔ requireVendor rejects when no vendor profile matches email (0.21ms)
+✔ requireVendor rejects when vendor profile is inactive (0.23ms)
+✔ requireVendor attaches vendor identity and calls next on success (0.28ms)
+
+Total Tests: 19 | Passed: 19 | Failed: 0 | Cancelled: 0 | Duration: 2.46s
+```
+
+### Build Verification Logs
+- **Backend Build (`prisma generate && tsc`)**:
+  `✔ Generated Prisma Client (v6.19.3) in 1.02s. TypeScript exit code 0.`
+- **Frontend Build (`tsc -b && vite build`)**:
+  `✓ 2005 modules transformed. dist/assets/index-54F25H0r.js 548.78 kB. Vite built in 1.55s. Exit code 0.`
+
+---
+
+## 16. List of Modified Files & Implementation Decisions
+
+1. `backend/src/modules/orders/order.service.ts`: Fixed string-to-number loyalty discount return value to prevent UI `TypeError`.
+2. `frontend/src/CustomerCommerceDialog.tsx`: Added `Number(discountAmount || 0).toFixed(2)` defensive parsing and broadened loyalty interface type.
+3. `backend/src/modules/upload.routes.ts`: Created new `POST /api/upload` endpoint for base64 image data URIs with MIME validation and 10MB capacity.
+4. `backend/src/server.ts`: Mounted `/uploads` static file directory with cross-origin headers, increased body limits to `10mb`, mounted upload router.
+5. `backend/src/modules/admin.routes.ts` & `backend/src/modules/vendor/vendor.routes.ts`: Expanded image URL schema to permit data URIs and local upload paths.
+6. `frontend/src/admin/AdminPortal.tsx`: Added local file picker upload buttons, loading state, preview, and clear button across all 4 photographic camera angles.
+7. `frontend/src/vendor/VendorPortal.tsx`: Added local file picker upload buttons across 4 angles, plus self-service seller registration modal with nearest warehouse hub routing.
+8. `backend/src/modules/auth/auth.routes.ts`: Added `POST /register-vendor` and `GET /warehouses/public`.
+9. `README.md`: Updated comprehensive documentation, test accounts, live links, and features.
+10. `manual_testing_guide.md`: Created detailed step-by-step test execution scripts for all portals.
+
+---
 
 *Document compiled and verified for GlobalCart Production Release 1.0.0.*
